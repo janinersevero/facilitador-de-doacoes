@@ -19,5 +19,3 @@ coverage.html
 # OS
 .DS_Store
 Thumbs.db
-
-go.sum

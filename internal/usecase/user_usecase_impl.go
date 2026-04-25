@@ -1,21 +1,25 @@
 package usecase
 
 import (
+	"context"
 	"errors"
+	"fmt"
 
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 
 	"facilitador-de-doacoes/internal/model"
 	"facilitador-de-doacoes/internal/repository"
+	"facilitador-de-doacoes/pkg/supabase"
 )
 
 type userUseCase struct {
-	repo repository.UserRepository
+	repo     repository.UserRepository
+	supabase *supabase.Client
 }
 
-func NewUserUseCase(repo repository.UserRepository) UserUseCase {
-	return &userUseCase{repo: repo}
+func NewUserUseCase(repo repository.UserRepository, supabase *supabase.Client) UserUseCase {
+	return &userUseCase{repo: repo, supabase: supabase}
 }
 
 func (uc *userUseCase) Create(input CreateUserInput) (*model.User, error) {
@@ -104,4 +108,33 @@ func (uc *userUseCase) Delete(id uuid.UUID) error {
 		return err
 	}
 	return uc.repo.Delete(id)
+}
+
+func (uc *userUseCase) UploadAvatar(id uuid.UUID, fileBytes []byte, contentType string) (*model.User, error) {
+	user, err := uc.repo.FindByID(id)
+	if err != nil {
+		return nil, err
+	}
+
+	ext := "jpg"
+	switch contentType {
+	case "image/png":
+		ext = "png"
+	case "image/webp":
+		ext = "webp"
+	}
+
+	fileName := fmt.Sprintf("avatars/%s-%s.%s", id.String(), uuid.New().String(), ext)
+
+	publicURL, err := uc.supabase.UploadFile(context.Background(), fileName, fileBytes, contentType)
+	if err != nil {
+		return nil, fmt.Errorf("upload avatar: %w", err)
+	}
+
+	if err := uc.repo.UpdateAvatarURL(id, publicURL); err != nil {
+		return nil, err
+	}
+
+	user.AvatarURL = publicURL
+	return user, nil
 }

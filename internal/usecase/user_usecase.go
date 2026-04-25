@@ -32,4 +32,5 @@ type UserUseCase interface {
 	GetAll() ([]*model.User, error)
 	Update(id uuid.UUID, input UpdateUserInput) (*model.User, error)
 	Delete(id uuid.UUID) error
+	UploadAvatar(id uuid.UUID, fileBytes []byte, contentType string) (*model.User, error)
 }

@@ -12,5 +12,6 @@ type UserRepository interface {
 	FindByEmail(email string) (*model.User, error)
 	FindAll() ([]*model.User, error)
 	Update(user *model.User) error
+	UpdateAvatarURL(id uuid.UUID, url string) error
 	Delete(id uuid.UUID) error
 }

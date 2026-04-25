@@ -13,6 +13,7 @@ import (
 	"facilitador-de-doacoes/internal/usecase"
 	"facilitador-de-doacoes/pkg/abacatepay"
 	"facilitador-de-doacoes/pkg/database"
+	"facilitador-de-doacoes/pkg/supabase"
 )
 
 func main() {
@@ -30,9 +31,10 @@ func main() {
 	}
 
 	abacateClient := abacatepay.NewClient(os.Getenv("ABACATEPAY_API_KEY"))
+	supabaseClient := supabase.NewClient(os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_KEY"), os.Getenv("SUPABASE_BUCKET_NAME"))
 
 	userRepo := repository.NewUserRepository(db)
-	userUC := usecase.NewUserUseCase(userRepo)
+	userUC := usecase.NewUserUseCase(userRepo, supabaseClient)
 	userHandler := handler.NewUserHandler(userUC)
 
 	donationRepo := repository.NewDonationRepository(db)

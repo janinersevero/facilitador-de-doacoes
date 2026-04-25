@@ -57,6 +57,10 @@ func (r *userRepository) Update(user *model.User) error {
 	return r.db.Save(user).Error
 }
 
+func (r *userRepository) UpdateAvatarURL(id uuid.UUID, url string) error {
+	return r.db.Model(&model.User{}).Where("id = ?", id).Update("avatar_url", url).Error
+}
+
 func (r *userRepository) Delete(id uuid.UUID) error {
 	return r.db.Delete(&model.User{}, "id = ?", id).Error
 }

@@ -16,6 +16,7 @@ type User struct {
 	CPF       string    `gorm:"uniqueIndex"          json:"cpf,omitempty"`
 	Birthdate string                                 `json:"birthdate,omitempty"`
 	Phone     string                                 `json:"phone,omitempty"`
+	AvatarURL string                                 `json:"avatar_url,omitempty"`
 	CreatedAt time.Time                              `json:"created_at"`
 	UpdatedAt time.Time                              `json:"updated_at"`
 }

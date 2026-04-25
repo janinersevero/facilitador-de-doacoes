@@ -1,3 +1,21 @@
-.claude
-go.sum
+# Environment
 .env
+
+# Claude
+.claude
+
+# Binaries
+bin/
+facilitador-de-doacoes
+
+# Test coverage
+*.out
+coverage.html
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

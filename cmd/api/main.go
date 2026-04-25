@@ -11,6 +11,7 @@ import (
 	"facilitador-de-doacoes/internal/model"
 	"facilitador-de-doacoes/internal/repository"
 	"facilitador-de-doacoes/internal/usecase"
+	"facilitador-de-doacoes/pkg/abacatepay"
 	"facilitador-de-doacoes/pkg/database"
 )
 
@@ -24,18 +25,25 @@ func main() {
 		log.Fatalf("failed to connect to database: %v", err)
 	}
 
-	if err := db.AutoMigrate(&model.User{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.Donation{}); err != nil {
 		log.Fatalf("failed to run migrations: %v", err)
 	}
+
+	abacateClient := abacatepay.NewClient(os.Getenv("ABACATEPAY_API_KEY"))
 
 	userRepo := repository.NewUserRepository(db)
 	userUC := usecase.NewUserUseCase(userRepo)
 	userHandler := handler.NewUserHandler(userUC)
 
+	donationRepo := repository.NewDonationRepository(db)
+	donationUC := usecase.NewDonationUseCase(donationRepo, userRepo, abacateClient)
+	donationHandler := handler.NewDonationHandler(donationUC)
+
 	r := gin.Default()
 
 	api := r.Group("/api/v1")
 	userHandler.RegisterRoutes(api)
+	donationHandler.RegisterRoutes(api)
 
 	port := os.Getenv("PORT")
 	if port == "" {

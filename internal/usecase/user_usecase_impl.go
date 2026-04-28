@@ -12,7 +12,8 @@ import (
 	"facilitador-de-doacoes/internal/repository"
 )
 
-// FileUploader abstracts file-upload operations (implemented by supabase.Client).
+// FileUploader abstracts file-upload operations 
+// (implemented by supabase.Client) for test purposes ;)
 type FileUploader interface {
 	UploadFile(ctx context.Context, fileName string, data []byte, contentType string) (string, error)
 }

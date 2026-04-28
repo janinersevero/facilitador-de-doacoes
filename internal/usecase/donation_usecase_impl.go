@@ -11,7 +11,8 @@ import (
 	"facilitador-de-doacoes/pkg/abacatepay"
 )
 
-// PixClient abstracts PIX payment operations (implemented by abacatepay.Client).
+// PixClient abstracts PIX payment operations 
+// (implemented by abacatepay.Client) for test purposes ;)
 type PixClient interface {
 	CreatePix(ctx context.Context, req abacatepay.CreatePixRequest) (*abacatepay.PixData, error)
 }

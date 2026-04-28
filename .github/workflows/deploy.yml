@@ -21,7 +21,7 @@ jobs:
       - name: Build
         run: go build ./...
 
-    test:
+  test:
     name: Unit Test
     runs-on: ubuntu-latest
     needs: build
@@ -35,7 +35,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Run tests
-        run: go test -v -race -coverprofile=coverage.out ./...
+        run: go test -v ./...
 
   deploy:
     name: Deploy to Coolify

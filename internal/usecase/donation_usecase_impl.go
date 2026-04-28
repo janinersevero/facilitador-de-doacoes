@@ -11,13 +11,18 @@ import (
 	"facilitador-de-doacoes/pkg/abacatepay"
 )
 
+// PixClient abstracts PIX payment operations (implemented by abacatepay.Client).
+type PixClient interface {
+	CreatePix(ctx context.Context, req abacatepay.CreatePixRequest) (*abacatepay.PixData, error)
+}
+
 type donationUseCase struct {
 	repo     repository.DonationRepository
 	userRepo repository.UserRepository
-	client   *abacatepay.Client
+	client   PixClient
 }
 
-func NewDonationUseCase(repo repository.DonationRepository, userRepo repository.UserRepository, client *abacatepay.Client) DonationUseCase {
+func NewDonationUseCase(repo repository.DonationRepository, userRepo repository.UserRepository, client PixClient) DonationUseCase {
 	return &donationUseCase{repo: repo, userRepo: userRepo, client: client}
 }
 

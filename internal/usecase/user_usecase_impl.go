@@ -10,16 +10,20 @@ import (
 
 	"facilitador-de-doacoes/internal/model"
 	"facilitador-de-doacoes/internal/repository"
-	"facilitador-de-doacoes/pkg/supabase"
 )
+
+// FileUploader abstracts file-upload operations (implemented by supabase.Client).
+type FileUploader interface {
+	UploadFile(ctx context.Context, fileName string, data []byte, contentType string) (string, error)
+}
 
 type userUseCase struct {
 	repo     repository.UserRepository
-	supabase *supabase.Client
+	uploader FileUploader
 }
 
-func NewUserUseCase(repo repository.UserRepository, supabase *supabase.Client) UserUseCase {
-	return &userUseCase{repo: repo, supabase: supabase}
+func NewUserUseCase(repo repository.UserRepository, uploader FileUploader) UserUseCase {
+	return &userUseCase{repo: repo, uploader: uploader}
 }
 
 func (uc *userUseCase) Create(input CreateUserInput) (*model.User, error) {
@@ -126,7 +130,7 @@ func (uc *userUseCase) UploadAvatar(id uuid.UUID, fileBytes []byte, contentType 
 
 	fileName := fmt.Sprintf("avatars/%s-%s.%s", id.String(), uuid.New().String(), ext)
 
-	publicURL, err := uc.supabase.UploadFile(context.Background(), fileName, fileBytes, contentType)
+	publicURL, err := uc.uploader.UploadFile(context.Background(), fileName, fileBytes, contentType)
 	if err != nil {
 		return nil, fmt.Errorf("upload avatar: %w", err)
 	}

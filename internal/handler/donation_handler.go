@@ -59,14 +59,14 @@ func (h *DonationHandler) GetAll(c *gin.Context) {
 func (h *DonationHandler) GetByID(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "id inválido"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
 		return
 	}
 
 	donation, err := h.uc.GetByID(id)
 	if err != nil {
 		if errors.Is(err, model.ErrNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "doação não encontrada"})
+			c.JSON(http.StatusNotFound, gin.H{"error": "donation not found"})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

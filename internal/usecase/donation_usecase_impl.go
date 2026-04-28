@@ -30,7 +30,7 @@ func NewDonationUseCase(repo repository.DonationRepository, userRepo repository.
 func (uc *donationUseCase) Create(input CreateDonationInput) (*model.Donation, error) {
 	user, err := uc.userRepo.FindByID(input.UserID)
 	if err != nil {
-		return nil, fmt.Errorf("usuário não encontrado: %w", err)
+		return nil, fmt.Errorf("user not found: %w", err)
 	}
 
 	pixReq := abacatepay.CreatePixRequest{
@@ -49,7 +49,7 @@ func (uc *donationUseCase) Create(input CreateDonationInput) (*model.Donation, e
 
 	pix, err := uc.client.CreatePix(context.Background(), pixReq)
 	if err != nil {
-		return nil, fmt.Errorf("criar pix: %w", err)
+		return nil, fmt.Errorf("create pix: %w", err)
 	}
 
 	donation := &model.Donation{

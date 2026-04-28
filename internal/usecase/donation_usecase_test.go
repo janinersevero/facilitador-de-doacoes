@@ -99,7 +99,7 @@ func TestCreateDonation_UserNotFound(t *testing.T) {
 	})
 
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "usuário não encontrado")
+	assert.Contains(t, err.Error(), "user not found")
 }
 
 func TestCreateDonation_PixClientError(t *testing.T) {
@@ -119,7 +119,7 @@ func TestCreateDonation_PixClientError(t *testing.T) {
 	})
 
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "criar pix")
+	assert.Contains(t, err.Error(), "create pix")
 }
 
 func TestCreateDonation_RepoCreateError(t *testing.T) {

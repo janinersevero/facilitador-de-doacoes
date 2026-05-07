@@ -8,6 +8,7 @@ import (
 	"github.com/joho/godotenv"
 
 	"facilitador-de-doacoes/internal/handler"
+	"facilitador-de-doacoes/internal/middleware"
 	"facilitador-de-doacoes/internal/model"
 	"facilitador-de-doacoes/internal/repository"
 	"facilitador-de-doacoes/internal/usecase"
@@ -26,7 +27,7 @@ func main() {
 		log.Fatalf("failed to connect to database: %v", err)
 	}
 
-	if err := db.AutoMigrate(&model.User{}, &model.Donation{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.Donation{}, &model.Institution{}); err != nil {
 		log.Fatalf("failed to run migrations: %v", err)
 	}
 
@@ -41,11 +42,28 @@ func main() {
 	donationUC := usecase.NewDonationUseCase(donationRepo, userRepo, abacateClient)
 	donationHandler := handler.NewDonationHandler(donationUC)
 
+	institutionRepo := repository.NewInstitutionRepository(db)
+	institutionUC := usecase.NewInstitutionUseCase(institutionRepo)
+	institutionHandler := handler.NewInstitutionHandler(institutionUC)
+
+	// Auth0 JWT validator — reads domain and audience from env vars.
+	jwtValidator, err := middleware.NewAuth0Validator(
+		os.Getenv("AUTH0_DOMAIN"),
+		os.Getenv("AUTH0_AUDIENCE"),
+	)
+	if err != nil {
+		log.Fatalf("failed to create auth0 validator: %v", err)
+	}
+
+	authMiddleware := middleware.AuthMiddleware(jwtValidator)
+	requireUser := middleware.RequireUser(userUC)
+
 	r := gin.Default()
 
 	api := r.Group("/api/v1")
 	userHandler.RegisterRoutes(api)
 	donationHandler.RegisterRoutes(api)
+	institutionHandler.RegisterRoutes(api, authMiddleware, requireUser)
 
 	port := os.Getenv("PORT")
 	if port == "" {

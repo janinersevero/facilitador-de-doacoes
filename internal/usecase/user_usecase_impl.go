@@ -66,6 +66,10 @@ func (uc *userUseCase) GetByID(id uuid.UUID) (*model.User, error) {
 	return uc.repo.FindByID(id)
 }
 
+func (uc *userUseCase) GetByAuth0ID(auth0ID string) (*model.User, error) {
+	return uc.repo.FindByAuth0ID(auth0ID)
+}
+
 func (uc *userUseCase) GetAll() ([]*model.User, error) {
 	return uc.repo.FindAll()
 }

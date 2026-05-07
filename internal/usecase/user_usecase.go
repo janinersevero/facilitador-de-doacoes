@@ -29,6 +29,7 @@ type UpdateUserInput struct {
 type UserUseCase interface {
 	Create(input CreateUserInput) (*model.User, error)
 	GetByID(id uuid.UUID) (*model.User, error)
+	GetByAuth0ID(auth0ID string) (*model.User, error)
 	GetAll() ([]*model.User, error)
 	Update(id uuid.UUID, input UpdateUserInput) (*model.User, error)
 	Delete(id uuid.UUID) error

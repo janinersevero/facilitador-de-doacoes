@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	"facilitador-de-doacoes/internal/model"
+	"facilitador-de-doacoes/internal/repository"
 	"facilitador-de-doacoes/pkg/abacatepay"
 )
 
@@ -100,6 +101,52 @@ func (m *MockDonationRepository) FindAll() ([]*model.Donation, error) {
 
 func (m *MockDonationRepository) UpdateStatus(id uuid.UUID, status string) error {
 	return m.Called(id, status).Error(0)
+}
+
+// ---------- CampaignRepository ----------
+
+type MockCampaignRepository struct {
+	mock.Mock
+}
+
+func (m *MockCampaignRepository) Create(campaign *model.Campaign) error {
+	return m.Called(campaign).Error(0)
+}
+
+func (m *MockCampaignRepository) FindByID(id uuid.UUID) (*model.Campaign, error) {
+	args := m.Called(id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*model.Campaign), args.Error(1)
+}
+
+func (m *MockCampaignRepository) FindAll(filters repository.CampaignFilters) ([]*model.Campaign, error) {
+	args := m.Called(filters)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*model.Campaign), args.Error(1)
+}
+
+func (m *MockCampaignRepository) FindByInstitutionID(institutionID uuid.UUID) ([]*model.Campaign, error) {
+	args := m.Called(institutionID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*model.Campaign), args.Error(1)
+}
+
+func (m *MockCampaignRepository) Update(campaign *model.Campaign) error {
+	return m.Called(campaign).Error(0)
+}
+
+func (m *MockCampaignRepository) Delete(id uuid.UUID) error {
+	return m.Called(id).Error(0)
+}
+
+func (m *MockCampaignRepository) IncrementTotalRaised(id uuid.UUID, amount int64) error {
+	return m.Called(id, amount).Error(0)
 }
 
 // ---------- FileUploader ----------

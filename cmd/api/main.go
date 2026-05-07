@@ -27,7 +27,7 @@ func main() {
 		log.Fatalf("failed to connect to database: %v", err)
 	}
 
-	if err := db.AutoMigrate(&model.User{}, &model.Donation{}, &model.Institution{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.Donation{}, &model.Institution{}, &model.Campaign{}); err != nil {
 		log.Fatalf("failed to run migrations: %v", err)
 	}
 
@@ -38,15 +38,18 @@ func main() {
 	userUC := usecase.NewUserUseCase(userRepo, supabaseClient)
 	userHandler := handler.NewUserHandler(userUC)
 
-	donationRepo := repository.NewDonationRepository(db)
-	donationUC := usecase.NewDonationUseCase(donationRepo, userRepo, abacateClient)
-	donationHandler := handler.NewDonationHandler(donationUC)
-
 	institutionRepo := repository.NewInstitutionRepository(db)
 	institutionUC := usecase.NewInstitutionUseCase(institutionRepo)
 	institutionHandler := handler.NewInstitutionHandler(institutionUC)
 
-	// Auth0 JWT validator — reads domain and audience from env vars.
+	campaignRepo := repository.NewCampaignRepository(db)
+	campaignUC := usecase.NewCampaignUseCase(campaignRepo, institutionRepo)
+	campaignHandler := handler.NewCampaignHandler(campaignUC)
+
+	donationRepo := repository.NewDonationRepository(db)
+	donationUC := usecase.NewDonationUseCase(donationRepo, userRepo, campaignRepo, abacateClient)
+	donationHandler := handler.NewDonationHandler(donationUC)
+
 	jwtValidator, err := middleware.NewAuth0Validator(
 		os.Getenv("AUTH0_DOMAIN"),
 		os.Getenv("AUTH0_AUDIENCE"),
@@ -64,6 +67,7 @@ func main() {
 	userHandler.RegisterRoutes(api)
 	donationHandler.RegisterRoutes(api)
 	institutionHandler.RegisterRoutes(api, authMiddleware, requireUser)
+	campaignHandler.RegisterRoutes(api, authMiddleware, requireUser)
 
 	port := os.Getenv("PORT")
 	if port == "" {

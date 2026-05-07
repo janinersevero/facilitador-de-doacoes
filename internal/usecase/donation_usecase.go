@@ -7,8 +7,10 @@ import (
 )
 
 type CreateDonationInput struct {
-	UserID uuid.UUID `json:"user_id" binding:"required"`
-	Amount int       `json:"amount"  binding:"required,min=100"`
+	UserID        uuid.UUID  `json:"user_id"         binding:"required"`
+	Amount        int        `json:"amount"          binding:"required,min=100"`
+	InstitutionID *uuid.UUID `json:"institution_id"`
+	CampaignID    *uuid.UUID `json:"campaign_id"`
 }
 
 type DonationUseCase interface {

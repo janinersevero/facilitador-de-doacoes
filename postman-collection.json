@@ -1,0 +1,480 @@
+{
+  "info": {
+    "name": "Facilitador de Doações",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url",       "value": "http://localhost:8080/api/v1" },
+    { "key": "auth_token",     "value": "SEU_JWT_AQUI", "description": "Bearer token retornado pelo Auth0 (válido para usuário ou instituição conforme o endpoint)" },
+    { "key": "user_id",        "value": "" },
+    { "key": "institution_id", "value": "" },
+    { "key": "campaign_id",    "value": "" },
+    { "key": "necessity_id",   "value": "" },
+    { "key": "donation_id",    "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "Criar usuário (requer Auth0 JWT)",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/users",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"João Silva\",\n  \"email\": \"joao@exemplo.com\",\n  \"role\": \"donor\",\n  \"cpf\": \"123.456.789-00\",\n  \"birthdate\": \"1990-05-15\",\n  \"phone\": \"(11) 99999-0000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json",
+                  "description": "Sem campo password — autenticação gerenciada pelo Auth0. O auth0_id é extraído do JWT automaticamente."
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Meu perfil (requer JWT do usuário)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/users/me",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ]
+          }
+        },
+        {
+          "name": "Listar usuários (público)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/users"
+          }
+        },
+        {
+          "name": "Buscar usuário por ID (público)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/users/{{user_id}}"
+          }
+        },
+        {
+          "name": "Atualizar usuário (requer JWT do próprio usuário)",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/users/{{user_id}}",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"João Silva Atualizado\",\n  \"phone\": \"(11) 88888-1111\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json",
+                  "description": "Só pode atualizar o próprio perfil (user_id na URL deve corresponder ao token)."
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Deletar usuário (requer JWT do próprio usuário)",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/users/{{user_id}}",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ]
+          }
+        },
+        {
+          "name": "Upload avatar (requer JWT do próprio usuário)",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/users/{{user_id}}/avatar",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "avatar",
+                  "type": "file",
+                  "description": "Arquivo JPEG, PNG ou WebP (máx 20MB)"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Institutions",
+      "item": [
+        {
+          "name": "Listar instituições (público)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/institutions"
+          }
+        },
+        {
+          "name": "Buscar instituição por ID (público)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/institutions/{{institution_id}}"
+          }
+        },
+        {
+          "name": "Minha instituição (requer JWT da instituição)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/institutions/me",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ]
+          }
+        },
+        {
+          "name": "Criar instituição (requer Auth0 JWT)",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/institutions",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"ONG Esperança\",\n  \"legal_name\": \"ONG Esperança LTDA\",\n  \"cnpj\": \"12.345.678/0001-90\",\n  \"description\": \"Ajudamos crianças em situação de vulnerabilidade\",\n  \"email\": \"contato@ongEsperanca.org\",\n  \"phone\": \"(11) 3333-4444\",\n  \"address\": \"Rua das Flores, 123\",\n  \"zip_code\": \"01310-100\",\n  \"category\": \"social\",\n  \"website_url\": \"https://ongEsperanca.org\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json",
+                  "description": "O auth0_id é extraído do JWT automaticamente. Só é possível criar uma instituição por Auth0 account."
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Atualizar instituição (requer JWT da própria instituição)",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/institutions/{{institution_id}}",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"ONG Esperança Atualizada\",\n  \"description\": \"Nova descrição da instituição\",\n  \"phone\": \"(11) 5555-6666\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Deletar instituição (requer JWT da própria instituição)",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/institutions/{{institution_id}}",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ]
+          }
+        },
+        {
+          "name": "Atualizar status da instituição (admin)",
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/institutions/{{institution_id}}/status",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"approved\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json",
+                  "description": "status: pending | approved | rejected"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Rejeitar instituição (admin)",
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/institutions/{{institution_id}}/status",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"rejected\",\n  \"rejection_reason\": \"Documentação incompleta\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Campaigns",
+      "item": [
+        {
+          "name": "Listar campanhas (público)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/campaigns",
+              "host": ["{{base_url}}"],
+              "path": ["campaigns"],
+              "query": [
+                { "key": "keyword",   "value": "saúde", "disabled": true },
+                { "key": "is_urgent", "value": "true",  "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Buscar campanha por ID (público)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/campaigns/{{campaign_id}}"
+          }
+        },
+        {
+          "name": "Listar campanhas por instituição (público)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/institutions/{{institution_id}}/campaigns"
+          }
+        },
+        {
+          "name": "Criar campanha (requer JWT da instituição)",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/institutions/{{institution_id}}/campaigns",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Campanha de Saúde Infantil\",\n  \"description\": \"Arrecadação para compra de medicamentos\",\n  \"goal_amount\": 1000000,\n  \"is_urgent\": true,\n  \"keywords\": [\"saúde\", \"crianças\", \"medicamentos\"],\n  \"cover_image_url\": \"https://exemplo.com/imagem.jpg\",\n  \"ends_at\": \"2026-12-31T23:59:59Z\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json",
+                  "description": "goal_amount em centavos (ex: 1000000 = R$10.000,00). O institution_id na URL deve corresponder ao token."
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Atualizar campanha (requer JWT da instituição)",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/campaigns/{{campaign_id}}",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Campanha Atualizada\",\n  \"description\": \"Nova descrição\",\n  \"is_urgent\": false,\n  \"keywords\": [\"saúde\", \"idosos\"]\n}"
+            }
+          }
+        },
+        {
+          "name": "Deletar campanha (requer JWT da instituição)",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/campaigns/{{campaign_id}}",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ]
+          }
+        },
+        {
+          "name": "Atualizar status da campanha (requer JWT da instituição)",
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/campaigns/{{campaign_id}}/status",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"paused\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json",
+                  "description": "status: active | paused | completed | cancelled"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Necessities",
+      "item": [
+        {
+          "name": "Listar necessidades por instituição (público)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/institutions/{{institution_id}}/necessities"
+          }
+        },
+        {
+          "name": "Buscar necessidade por ID (público)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/necessities/{{necessity_id}}"
+          }
+        },
+        {
+          "name": "Criar necessidade (requer JWT da instituição)",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/institutions/{{institution_id}}/necessities",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Fraldas descartáveis para bebês de 0 a 2 anos\",\n  \"category\": \"higiene\",\n  \"is_urgent\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json",
+                  "description": "O institution_id na URL deve corresponder ao token."
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Atualizar necessidade (requer JWT da instituição)",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/necessities/{{necessity_id}}",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Descrição atualizada\",\n  \"category\": \"alimentação\",\n  \"is_urgent\": false\n}"
+            }
+          }
+        },
+        {
+          "name": "Deletar necessidade (requer JWT da instituição)",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/necessities/{{necessity_id}}",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ]
+          }
+        },
+        {
+          "name": "Atualizar status da necessidade (requer JWT da instituição)",
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/necessities/{{necessity_id}}/status",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"attended\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json",
+                  "description": "status: open | attended"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Donations",
+      "item": [
+        {
+          "name": "Criar doação (para instituição)",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/donations",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"{{user_id}}\",\n  \"amount\": 5000,\n  \"institution_id\": \"{{institution_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json",
+                  "description": "amount em centavos (ex: 5000 = R$50,00). Use institution_id OU campaign_id, não ambos."
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Criar doação (para campanha)",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/donations",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"{{user_id}}\",\n  \"amount\": 10000,\n  \"campaign_id\": \"{{campaign_id}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Listar doações",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/donations"
+          }
+        },
+        {
+          "name": "Buscar doação por ID",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/donations/{{donation_id}}"
+          }
+        },
+        {
+          "name": "Webhook (AbacatePay)",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/donations/webhook",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Webhook-Signature", "value": "sua_assinatura_aqui", "description": "Necessário se ABACATEPAY_WEBHOOK_SECRET estiver configurado" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event\": \"billing.paid\",\n  \"data\": {\n    \"billing\": {\n      \"id\": \"pix_id_aqui\",\n      \"status\": \"PAID\"\n    }\n  }\n}"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

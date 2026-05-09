@@ -68,6 +68,30 @@ func RequireUser(lookup Auth0UserLookup) gin.HandlerFunc {
 	}
 }
 
+// Auth0InstitutionLookup is the subset of usecase.InstitutionUseCase needed by RequireInstitution.
+type Auth0InstitutionLookup interface {
+	GetByAuth0ID(auth0ID string) (*model.Institution, error)
+}
+
+// RequireInstitution looks up the local institution by the Auth0 sub set in context and sets "institutionID".
+// Must be chained after AuthMiddleware.
+func RequireInstitution(lookup Auth0InstitutionLookup) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		rawSub, ok := c.Get("auth0_sub")
+		if !ok {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing auth0 subject"})
+			return
+		}
+		institution, err := lookup.GetByAuth0ID(rawSub.(string))
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "institution not found"})
+			return
+		}
+		c.Set("institutionID", institution.ID)
+		c.Next()
+	}
+}
+
 // auth0Validator wraps the Auth0 JWT validator to implement JWTValidator.
 type auth0Validator struct {
 	v *validator.Validator

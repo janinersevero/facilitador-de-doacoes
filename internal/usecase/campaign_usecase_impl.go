@@ -9,30 +9,14 @@ import (
 )
 
 type campaignUseCase struct {
-	repo     repository.CampaignRepository
-	instRepo repository.InstitutionRepository
+	repo repository.CampaignRepository
 }
 
-func NewCampaignUseCase(repo repository.CampaignRepository, instRepo repository.InstitutionRepository) CampaignUseCase {
-	return &campaignUseCase{repo: repo, instRepo: instRepo}
+func NewCampaignUseCase(repo repository.CampaignRepository) CampaignUseCase {
+	return &campaignUseCase{repo: repo}
 }
 
-func (uc *campaignUseCase) ownerCheck(institutionID, userID uuid.UUID) (*model.Institution, error) {
-	institution, err := uc.instRepo.FindByID(institutionID)
-	if err != nil {
-		return nil, err
-	}
-	if institution.UserID != userID {
-		return nil, model.ErrUnauthorized
-	}
-	return institution, nil
-}
-
-func (uc *campaignUseCase) Create(userID uuid.UUID, institutionID uuid.UUID, input CreateCampaignInput) (*model.Campaign, error) {
-	if _, err := uc.ownerCheck(institutionID, userID); err != nil {
-		return nil, err
-	}
-
+func (uc *campaignUseCase) Create(institutionID uuid.UUID, input CreateCampaignInput) (*model.Campaign, error) {
 	campaign := &model.Campaign{
 		InstitutionID: institutionID,
 		Title:         input.Title,
@@ -63,14 +47,14 @@ func (uc *campaignUseCase) GetByInstitutionID(institutionID uuid.UUID) ([]*model
 	return uc.repo.FindByInstitutionID(institutionID)
 }
 
-func (uc *campaignUseCase) Update(id uuid.UUID, userID uuid.UUID, input UpdateCampaignInput) (*model.Campaign, error) {
+func (uc *campaignUseCase) Update(id uuid.UUID, institutionID uuid.UUID, input UpdateCampaignInput) (*model.Campaign, error) {
 	campaign, err := uc.repo.FindByID(id)
 	if err != nil {
 		return nil, err
 	}
 
-	if _, err := uc.ownerCheck(campaign.InstitutionID, userID); err != nil {
-		return nil, err
+	if campaign.InstitutionID != institutionID {
+		return nil, model.ErrUnauthorized
 	}
 
 	if input.Title != "" {
@@ -101,27 +85,27 @@ func (uc *campaignUseCase) Update(id uuid.UUID, userID uuid.UUID, input UpdateCa
 	return campaign, nil
 }
 
-func (uc *campaignUseCase) Delete(id uuid.UUID, userID uuid.UUID) error {
+func (uc *campaignUseCase) Delete(id uuid.UUID, institutionID uuid.UUID) error {
 	campaign, err := uc.repo.FindByID(id)
 	if err != nil {
 		return err
 	}
 
-	if _, err := uc.ownerCheck(campaign.InstitutionID, userID); err != nil {
-		return err
+	if campaign.InstitutionID != institutionID {
+		return model.ErrUnauthorized
 	}
 
 	return uc.repo.Delete(id)
 }
 
-func (uc *campaignUseCase) UpdateStatus(id uuid.UUID, userID uuid.UUID, status model.CampaignStatus) (*model.Campaign, error) {
+func (uc *campaignUseCase) UpdateStatus(id uuid.UUID, institutionID uuid.UUID, status model.CampaignStatus) (*model.Campaign, error) {
 	campaign, err := uc.repo.FindByID(id)
 	if err != nil {
 		return nil, err
 	}
 
-	if _, err := uc.ownerCheck(campaign.InstitutionID, userID); err != nil {
-		return nil, err
+	if campaign.InstitutionID != institutionID {
+		return nil, model.ErrUnauthorized
 	}
 
 	campaign.Status = status

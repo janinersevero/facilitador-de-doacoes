@@ -43,11 +43,11 @@ type UpdateInstitutionStatusInput struct {
 }
 
 type InstitutionUseCase interface {
-	Create(userID uuid.UUID, input CreateInstitutionInput) (*model.Institution, error)
+	Create(auth0ID string, input CreateInstitutionInput) (*model.Institution, error)
 	GetByID(id uuid.UUID) (*model.Institution, error)
 	GetAll() ([]*model.Institution, error)
-	GetByUserID(userID uuid.UUID) ([]*model.Institution, error)
-	Update(id uuid.UUID, userID uuid.UUID, input UpdateInstitutionInput) (*model.Institution, error)
-	Delete(id uuid.UUID, userID uuid.UUID) error
+	GetByAuth0ID(auth0ID string) (*model.Institution, error)
+	Update(id uuid.UUID, institutionID uuid.UUID, input UpdateInstitutionInput) (*model.Institution, error)
+	Delete(id uuid.UUID, institutionID uuid.UUID) error
 	UpdateStatus(id uuid.UUID, input UpdateInstitutionStatusInput) (*model.Institution, error)
 }

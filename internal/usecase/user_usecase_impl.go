@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
@@ -12,32 +13,36 @@ import (
 	"facilitador-de-doacoes/internal/repository"
 )
 
-// FileUploader abstracts file-upload operations 
+// FileUploader abstracts file-upload operations
 // (implemented by supabase.Client) for test purposes ;)
 type FileUploader interface {
 	UploadFile(ctx context.Context, fileName string, data []byte, contentType string) (string, error)
 }
 
 type userUseCase struct {
-	repo     repository.UserRepository
-	uploader FileUploader
+	repo       repository.UserRepository
+	uploader   FileUploader
+	roleSetter RoleSetter
 }
 
-func NewUserUseCase(repo repository.UserRepository, uploader FileUploader) UserUseCase {
-	return &userUseCase{repo: repo, uploader: uploader}
+func NewUserUseCase(repo repository.UserRepository, uploader FileUploader, roleSetter RoleSetter) UserUseCase {
+	return &userUseCase{repo: repo, uploader: uploader, roleSetter: roleSetter}
 }
 
-func (uc *userUseCase) Create(input CreateUserInput) (*model.User, error) {
+func (uc *userUseCase) Create(auth0ID string, input CreateUserInput) (*model.User, error) {
+	// Se já existe pelo auth0_id, tenta setar o role novamente (retry após falha anterior)
+	if existing, err := uc.repo.FindByAuth0ID(auth0ID); err == nil {
+		if roleErr := uc.roleSetter.SetUserRole(context.Background(), auth0ID, existing.Role); roleErr != nil {
+			log.Printf("warn: set auth0 role for existing user %s: %v", auth0ID, roleErr)
+		}
+		return existing, nil
+	}
+
 	_, err := uc.repo.FindByEmail(input.Email)
 	if err == nil {
 		return nil, model.ErrEmailAlreadyInUse
 	}
 	if !errors.Is(err, model.ErrNotFound) {
-		return nil, err
-	}
-
-	hashed, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
-	if err != nil {
 		return nil, err
 	}
 
@@ -47,9 +52,9 @@ func (uc *userUseCase) Create(input CreateUserInput) (*model.User, error) {
 	}
 
 	user := &model.User{
+		Auth0ID:   auth0ID,
 		Name:      input.Name,
 		Email:     input.Email,
-		Password:  string(hashed),
 		Role:      role,
 		CPF:       input.CPF,
 		Birthdate: input.Birthdate,
@@ -59,6 +64,11 @@ func (uc *userUseCase) Create(input CreateUserInput) (*model.User, error) {
 	if err := uc.repo.Create(user); err != nil {
 		return nil, err
 	}
+
+	if err := uc.roleSetter.SetUserRole(context.Background(), auth0ID, role); err != nil {
+		log.Printf("warn: set auth0 role for new user %s: %v", auth0ID, err)
+	}
+
 	return user, nil
 }
 

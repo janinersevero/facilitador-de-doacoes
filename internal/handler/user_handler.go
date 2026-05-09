@@ -20,24 +20,36 @@ func NewUserHandler(uc usecase.UserUseCase) *UserHandler {
 	return &UserHandler{uc: uc}
 }
 
-func (h *UserHandler) RegisterRoutes(r *gin.RouterGroup) {
+func (h *UserHandler) RegisterRoutes(r *gin.RouterGroup, authOnly []gin.HandlerFunc, userAuth []gin.HandlerFunc) {
 	users := r.Group("/users")
-	users.POST("", h.Create)
+
 	users.GET("", h.GetAll)
 	users.GET("/:id", h.GetByID)
-	users.PUT("/:id", h.Update)
-	users.DELETE("/:id", h.Delete)
-	users.POST("/:id/avatar", h.UploadAvatar)
+
+	authGroup := users.Group("", authOnly...)
+	authGroup.POST("", h.Create)
+
+	meGroup := users.Group("", userAuth...)
+	meGroup.GET("/me", h.GetMe)
+	meGroup.PUT("/:id", h.Update)
+	meGroup.DELETE("/:id", h.Delete)
+	meGroup.POST("/:id/avatar", h.UploadAvatar)
 }
 
 func (h *UserHandler) Create(c *gin.Context) {
+	auth0Sub, ok := c.Get(auth0SubKey)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
 	var input usecase.CreateUserInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	user, err := h.uc.Create(input)
+	user, err := h.uc.Create(auth0Sub.(string), input)
 	if err != nil {
 		if errors.Is(err, model.ErrEmailAlreadyInUse) {
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
@@ -48,6 +60,26 @@ func (h *UserHandler) Create(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, user)
+}
+
+func (h *UserHandler) GetMe(c *gin.Context) {
+	userID, ok := c.Get(userIDKey)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	user, err := h.uc.GetByID(userID.(uuid.UUID))
+	if err != nil {
+		if errors.Is(err, model.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, user)
 }
 
 func (h *UserHandler) GetAll(c *gin.Context) {
@@ -86,6 +118,16 @@ func (h *UserHandler) Update(c *gin.Context) {
 		return
 	}
 
+	userID, ok := c.Get(userIDKey)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	if id != userID.(uuid.UUID) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return
+	}
+
 	var input usecase.UpdateUserInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -112,6 +154,16 @@ func (h *UserHandler) Delete(c *gin.Context) {
 		return
 	}
 
+	userID, ok := c.Get(userIDKey)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	if id != userID.(uuid.UUID) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return
+	}
+
 	if err := h.uc.Delete(id); err != nil {
 		if errors.Is(err, model.ErrNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
@@ -130,6 +182,16 @@ func (h *UserHandler) UploadAvatar(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+
+	userID, ok := c.Get(userIDKey)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	if id != userID.(uuid.UUID) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 		return
 	}
 

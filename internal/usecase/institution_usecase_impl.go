@@ -1,7 +1,9 @@
 package usecase
 
 import (
+	"context"
 	"errors"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -11,14 +13,23 @@ import (
 )
 
 type institutionUseCase struct {
-	repo repository.InstitutionRepository
+	repo       repository.InstitutionRepository
+	roleSetter RoleSetter
 }
 
-func NewInstitutionUseCase(repo repository.InstitutionRepository) InstitutionUseCase {
-	return &institutionUseCase{repo: repo}
+func NewInstitutionUseCase(repo repository.InstitutionRepository, roleSetter RoleSetter) InstitutionUseCase {
+	return &institutionUseCase{repo: repo, roleSetter: roleSetter}
 }
 
-func (uc *institutionUseCase) Create(userID uuid.UUID, input CreateInstitutionInput) (*model.Institution, error) {
+func (uc *institutionUseCase) Create(auth0ID string, input CreateInstitutionInput) (*model.Institution, error) {
+	// Se já existe pelo auth0_id, tenta setar o role novamente (retry após falha anterior)
+	if existing, err := uc.repo.FindByAuth0ID(auth0ID); err == nil {
+		if roleErr := uc.roleSetter.SetUserRole(context.Background(), auth0ID, "institution"); roleErr != nil {
+			log.Printf("warn: set auth0 role for existing institution %s: %v", auth0ID, roleErr)
+		}
+		return existing, nil
+	}
+
 	_, err := uc.repo.FindByCNPJ(input.CNPJ)
 	if err == nil {
 		return nil, model.ErrCNPJAlreadyInUse
@@ -28,7 +39,7 @@ func (uc *institutionUseCase) Create(userID uuid.UUID, input CreateInstitutionIn
 	}
 
 	institution := &model.Institution{
-		UserID:        userID,
+		Auth0ID:       auth0ID,
 		Name:          input.Name,
 		LegalName:     input.LegalName,
 		CNPJ:          input.CNPJ,
@@ -48,6 +59,11 @@ func (uc *institutionUseCase) Create(userID uuid.UUID, input CreateInstitutionIn
 	if err := uc.repo.Create(institution); err != nil {
 		return nil, err
 	}
+
+	if err := uc.roleSetter.SetUserRole(context.Background(), auth0ID, "institution"); err != nil {
+		log.Printf("warn: set auth0 role for new institution %s: %v", auth0ID, err)
+	}
+
 	return institution, nil
 }
 
@@ -59,18 +75,18 @@ func (uc *institutionUseCase) GetAll() ([]*model.Institution, error) {
 	return uc.repo.FindAll()
 }
 
-func (uc *institutionUseCase) GetByUserID(userID uuid.UUID) ([]*model.Institution, error) {
-	return uc.repo.FindByUserID(userID)
+func (uc *institutionUseCase) GetByAuth0ID(auth0ID string) (*model.Institution, error) {
+	return uc.repo.FindByAuth0ID(auth0ID)
 }
 
-func (uc *institutionUseCase) Update(id uuid.UUID, userID uuid.UUID, input UpdateInstitutionInput) (*model.Institution, error) {
+func (uc *institutionUseCase) Update(id uuid.UUID, institutionID uuid.UUID, input UpdateInstitutionInput) (*model.Institution, error) {
+	if id != institutionID {
+		return nil, model.ErrUnauthorized
+	}
+
 	institution, err := uc.repo.FindByID(id)
 	if err != nil {
 		return nil, err
-	}
-
-	if institution.UserID != userID {
-		return nil, model.ErrUnauthorized
 	}
 
 	if input.Name != "" {
@@ -116,14 +132,14 @@ func (uc *institutionUseCase) Update(id uuid.UUID, userID uuid.UUID, input Updat
 	return institution, nil
 }
 
-func (uc *institutionUseCase) Delete(id uuid.UUID, userID uuid.UUID) error {
-	institution, err := uc.repo.FindByID(id)
-	if err != nil {
-		return err
+func (uc *institutionUseCase) Delete(id uuid.UUID, institutionID uuid.UUID) error {
+	if id != institutionID {
+		return model.ErrUnauthorized
 	}
 
-	if institution.UserID != userID {
-		return model.ErrUnauthorized
+	_, err := uc.repo.FindByID(id)
+	if err != nil {
+		return err
 	}
 
 	return uc.repo.Delete(id)

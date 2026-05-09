@@ -22,8 +22,8 @@ type mockCampaignUseCase struct {
 	mock.Mock
 }
 
-func (m *mockCampaignUseCase) Create(userID uuid.UUID, institutionID uuid.UUID, input usecase.CreateCampaignInput) (*model.Campaign, error) {
-	args := m.Called(userID, institutionID, input)
+func (m *mockCampaignUseCase) Create(institutionID uuid.UUID, input usecase.CreateCampaignInput) (*model.Campaign, error) {
+	args := m.Called(institutionID, input)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -54,39 +54,38 @@ func (m *mockCampaignUseCase) GetByInstitutionID(institutionID uuid.UUID) ([]*mo
 	return args.Get(0).([]*model.Campaign), args.Error(1)
 }
 
-func (m *mockCampaignUseCase) Update(id uuid.UUID, userID uuid.UUID, input usecase.UpdateCampaignInput) (*model.Campaign, error) {
-	args := m.Called(id, userID, input)
+func (m *mockCampaignUseCase) Update(id uuid.UUID, institutionID uuid.UUID, input usecase.UpdateCampaignInput) (*model.Campaign, error) {
+	args := m.Called(id, institutionID, input)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*model.Campaign), args.Error(1)
 }
 
-func (m *mockCampaignUseCase) Delete(id uuid.UUID, userID uuid.UUID) error {
-	return m.Called(id, userID).Error(0)
+func (m *mockCampaignUseCase) Delete(id uuid.UUID, institutionID uuid.UUID) error {
+	return m.Called(id, institutionID).Error(0)
 }
 
-func (m *mockCampaignUseCase) UpdateStatus(id uuid.UUID, userID uuid.UUID, status model.CampaignStatus) (*model.Campaign, error) {
-	args := m.Called(id, userID, status)
+func (m *mockCampaignUseCase) UpdateStatus(id uuid.UUID, institutionID uuid.UUID, status model.CampaignStatus) (*model.Campaign, error) {
+	args := m.Called(id, institutionID, status)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*model.Campaign), args.Error(1)
 }
 
-func setupCampaignRouter(uc usecase.CampaignUseCase, userID uuid.UUID) *gin.Engine {
+func setupCampaignRouter(uc usecase.CampaignUseCase, instID uuid.UUID) *gin.Engine {
 	r := gin.New()
 	h := handler.NewCampaignHandler(uc)
 	api := r.Group("/api/v1")
-	h.RegisterRoutes(api, fakeAuth(userID))
+	h.RegisterRoutes(api, fakeInstitutionAuth(instID))
 	return r
 }
 
 func TestCampaignHandlerCreate_Success(t *testing.T) {
 	uc := &mockCampaignUseCase{}
-	userID := uuid.New()
 	instID := uuid.New()
-	r := setupCampaignRouter(uc, userID)
+	r := setupCampaignRouter(uc, instID)
 
 	input := usecase.CreateCampaignInput{
 		Title:       "Campanha Saúde",
@@ -96,7 +95,7 @@ func TestCampaignHandlerCreate_Success(t *testing.T) {
 	}
 	expected := &model.Campaign{ID: uuid.New(), Title: input.Title, InstitutionID: instID}
 
-	uc.On("Create", userID, instID, input).Return(expected, nil)
+	uc.On("Create", instID, input).Return(expected, nil)
 
 	body, _ := json.Marshal(input)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/institutions/"+instID.String()+"/campaigns", bytes.NewBuffer(body))
@@ -111,9 +110,10 @@ func TestCampaignHandlerCreate_Success(t *testing.T) {
 
 func TestCampaignHandlerCreate_BadRequest(t *testing.T) {
 	uc := &mockCampaignUseCase{}
-	r := setupCampaignRouter(uc, uuid.New())
+	instID := uuid.New()
+	r := setupCampaignRouter(uc, instID)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/institutions/"+uuid.New().String()+"/campaigns", bytes.NewBuffer([]byte(`{}`)))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/institutions/"+instID.String()+"/campaigns", bytes.NewBuffer([]byte(`{}`)))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
@@ -122,26 +122,22 @@ func TestCampaignHandlerCreate_BadRequest(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
-func TestCampaignHandlerCreate_Unauthorized(t *testing.T) {
+func TestCampaignHandlerCreate_Forbidden(t *testing.T) {
 	uc := &mockCampaignUseCase{}
-	userID := uuid.New()
 	instID := uuid.New()
-	r := setupCampaignRouter(uc, userID)
+	otherInstID := uuid.New()
+	r := setupCampaignRouter(uc, instID) // authenticated as instID
 
-	input := usecase.CreateCampaignInput{
-		Title: "X", Description: "Y", GoalAmount: 1000,
-	}
-	uc.On("Create", userID, instID, input).Return(nil, model.ErrUnauthorized)
-
+	input := usecase.CreateCampaignInput{Title: "X", Description: "Y", GoalAmount: 1000}
 	body, _ := json.Marshal(input)
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/institutions/"+instID.String()+"/campaigns", bytes.NewBuffer(body))
+	// path has otherInstID but context has instID → mismatch → 403
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/institutions/"+otherInstID.String()+"/campaigns", bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
 	r.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusForbidden, w.Code)
-	uc.AssertExpectations(t)
 }
 
 func TestCampaignHandlerGetAll_NoFilter(t *testing.T) {
@@ -213,14 +209,14 @@ func TestCampaignHandlerGetByID_NotFound(t *testing.T) {
 
 func TestCampaignHandlerUpdate_Success(t *testing.T) {
 	uc := &mockCampaignUseCase{}
-	userID := uuid.New()
-	r := setupCampaignRouter(uc, userID)
+	instID := uuid.New()
+	r := setupCampaignRouter(uc, instID)
 
 	id := uuid.New()
 	input := usecase.UpdateCampaignInput{Title: "Novo Título"}
 	expected := &model.Campaign{ID: id, Title: "Novo Título"}
 
-	uc.On("Update", id, userID, input).Return(expected, nil)
+	uc.On("Update", id, instID, input).Return(expected, nil)
 
 	body, _ := json.Marshal(input)
 	req := httptest.NewRequest(http.MethodPut, "/api/v1/campaigns/"+id.String(), bytes.NewBuffer(body))
@@ -235,12 +231,12 @@ func TestCampaignHandlerUpdate_Success(t *testing.T) {
 
 func TestCampaignHandlerUpdate_Forbidden(t *testing.T) {
 	uc := &mockCampaignUseCase{}
-	userID := uuid.New()
-	r := setupCampaignRouter(uc, userID)
+	instID := uuid.New()
+	r := setupCampaignRouter(uc, instID)
 
 	id := uuid.New()
 	input := usecase.UpdateCampaignInput{Title: "X"}
-	uc.On("Update", id, userID, input).Return(nil, model.ErrUnauthorized)
+	uc.On("Update", id, instID, input).Return(nil, model.ErrUnauthorized)
 
 	body, _ := json.Marshal(input)
 	req := httptest.NewRequest(http.MethodPut, "/api/v1/campaigns/"+id.String(), bytes.NewBuffer(body))
@@ -254,11 +250,11 @@ func TestCampaignHandlerUpdate_Forbidden(t *testing.T) {
 
 func TestCampaignHandlerDelete_Success(t *testing.T) {
 	uc := &mockCampaignUseCase{}
-	userID := uuid.New()
-	r := setupCampaignRouter(uc, userID)
+	instID := uuid.New()
+	r := setupCampaignRouter(uc, instID)
 
 	id := uuid.New()
-	uc.On("Delete", id, userID).Return(nil)
+	uc.On("Delete", id, instID).Return(nil)
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/v1/campaigns/"+id.String(), nil)
 	w := httptest.NewRecorder()
@@ -271,8 +267,8 @@ func TestCampaignHandlerDelete_Success(t *testing.T) {
 
 func TestCampaignHandlerUpdateStatus_Success(t *testing.T) {
 	uc := &mockCampaignUseCase{}
-	userID := uuid.New()
-	r := setupCampaignRouter(uc, userID)
+	instID := uuid.New()
+	r := setupCampaignRouter(uc, instID)
 
 	id := uuid.New()
 	expected := &model.Campaign{ID: id, Status: model.CampaignStatusPaused}
@@ -280,7 +276,7 @@ func TestCampaignHandlerUpdateStatus_Success(t *testing.T) {
 	type statusBody struct {
 		Status model.CampaignStatus `json:"status"`
 	}
-	uc.On("UpdateStatus", id, userID, model.CampaignStatusPaused).Return(expected, nil)
+	uc.On("UpdateStatus", id, instID, model.CampaignStatusPaused).Return(expected, nil)
 
 	body, _ := json.Marshal(statusBody{Status: model.CampaignStatusPaused})
 	req := httptest.NewRequest(http.MethodPatch, "/api/v1/campaigns/"+id.String()+"/status", bytes.NewBuffer(body))

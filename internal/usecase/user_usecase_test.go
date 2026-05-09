@@ -14,59 +14,67 @@ import (
 	"facilitador-de-doacoes/internal/usecase/mocks"
 )
 
+const testAuth0Sub = "auth0|test-sub-123"
+
 // --------------- Create ---------------
 
 func TestCreateUser_Success(t *testing.T) {
 	repo := new(mocks.MockUserRepository)
+	roleSetter := new(mocks.MockRoleSetter)
+	repo.On("FindByAuth0ID", testAuth0Sub).Return(nil, model.ErrNotFound)
 	repo.On("FindByEmail", "alice@example.com").Return(nil, model.ErrNotFound)
 	repo.On("Create", mock.AnythingOfType("*model.User")).Return(nil)
+	roleSetter.On("SetUserRole", mock.Anything, testAuth0Sub, "donor").Return(nil)
 
-	uc := usecase.NewUserUseCase(repo, nil)
+	uc := usecase.NewUserUseCase(repo, nil, roleSetter)
 
-	user, err := uc.Create(usecase.CreateUserInput{
-		Name:     "Alice",
-		Email:    "alice@example.com",
-		Password: "secret123",
+	user, err := uc.Create(testAuth0Sub, usecase.CreateUserInput{
+		Name:  "Alice",
+		Email: "alice@example.com",
 	})
 
 	assert.NoError(t, err)
 	assert.Equal(t, "Alice", user.Name)
 	assert.Equal(t, "alice@example.com", user.Email)
+	assert.Equal(t, testAuth0Sub, user.Auth0ID)
 	assert.Equal(t, "donor", user.Role, "default role should be donor")
-	assert.NoError(t, bcrypt.CompareHashAndPassword([]byte(user.Password), []byte("secret123")))
 	repo.AssertExpectations(t)
+	roleSetter.AssertExpectations(t)
 }
 
 func TestCreateUser_WithCustomRole(t *testing.T) {
 	repo := new(mocks.MockUserRepository)
+	roleSetter := new(mocks.MockRoleSetter)
+	repo.On("FindByAuth0ID", testAuth0Sub).Return(nil, model.ErrNotFound)
 	repo.On("FindByEmail", "bob@example.com").Return(nil, model.ErrNotFound)
 	repo.On("Create", mock.AnythingOfType("*model.User")).Return(nil)
+	roleSetter.On("SetUserRole", mock.Anything, testAuth0Sub, "admin").Return(nil)
 
-	uc := usecase.NewUserUseCase(repo, nil)
+	uc := usecase.NewUserUseCase(repo, nil, roleSetter)
 
-	user, err := uc.Create(usecase.CreateUserInput{
-		Name:     "Bob",
-		Email:    "bob@example.com",
-		Password: "secret123",
-		Role:     "admin",
+	user, err := uc.Create(testAuth0Sub, usecase.CreateUserInput{
+		Name:  "Bob",
+		Email: "bob@example.com",
+		Role:  "admin",
 	})
 
 	assert.NoError(t, err)
 	assert.Equal(t, "admin", user.Role)
 	repo.AssertExpectations(t)
+	roleSetter.AssertExpectations(t)
 }
 
 func TestCreateUser_EmailAlreadyInUse(t *testing.T) {
 	repo := new(mocks.MockUserRepository)
 	existing := &model.User{Email: "alice@example.com"}
+	repo.On("FindByAuth0ID", testAuth0Sub).Return(nil, model.ErrNotFound)
 	repo.On("FindByEmail", "alice@example.com").Return(existing, nil)
 
-	uc := usecase.NewUserUseCase(repo, nil)
+	uc := usecase.NewUserUseCase(repo, nil, nil)
 
-	_, err := uc.Create(usecase.CreateUserInput{
-		Name:     "Alice",
-		Email:    "alice@example.com",
-		Password: "secret123",
+	_, err := uc.Create(testAuth0Sub, usecase.CreateUserInput{
+		Name:  "Alice",
+		Email: "alice@example.com",
 	})
 
 	assert.ErrorIs(t, err, model.ErrEmailAlreadyInUse)
@@ -75,14 +83,14 @@ func TestCreateUser_EmailAlreadyInUse(t *testing.T) {
 
 func TestCreateUser_RepoFindError(t *testing.T) {
 	repo := new(mocks.MockUserRepository)
+	repo.On("FindByAuth0ID", testAuth0Sub).Return(nil, model.ErrNotFound)
 	repo.On("FindByEmail", "alice@example.com").Return(nil, errors.New("db connection lost"))
 
-	uc := usecase.NewUserUseCase(repo, nil)
+	uc := usecase.NewUserUseCase(repo, nil, nil)
 
-	_, err := uc.Create(usecase.CreateUserInput{
-		Name:     "Alice",
-		Email:    "alice@example.com",
-		Password: "secret123",
+	_, err := uc.Create(testAuth0Sub, usecase.CreateUserInput{
+		Name:  "Alice",
+		Email: "alice@example.com",
 	})
 
 	assert.Error(t, err)
@@ -91,15 +99,15 @@ func TestCreateUser_RepoFindError(t *testing.T) {
 
 func TestCreateUser_RepoCreateError(t *testing.T) {
 	repo := new(mocks.MockUserRepository)
+	repo.On("FindByAuth0ID", testAuth0Sub).Return(nil, model.ErrNotFound)
 	repo.On("FindByEmail", "alice@example.com").Return(nil, model.ErrNotFound)
 	repo.On("Create", mock.AnythingOfType("*model.User")).Return(errors.New("insert failed"))
 
-	uc := usecase.NewUserUseCase(repo, nil)
+	uc := usecase.NewUserUseCase(repo, nil, nil)
 
-	_, err := uc.Create(usecase.CreateUserInput{
-		Name:     "Alice",
-		Email:    "alice@example.com",
-		Password: "secret123",
+	_, err := uc.Create(testAuth0Sub, usecase.CreateUserInput{
+		Name:  "Alice",
+		Email: "alice@example.com",
 	})
 
 	assert.EqualError(t, err, "insert failed")
@@ -113,7 +121,7 @@ func TestGetByID_Success(t *testing.T) {
 	expected := &model.User{ID: id, Name: "Alice"}
 	repo.On("FindByID", id).Return(expected, nil)
 
-	uc := usecase.NewUserUseCase(repo, nil)
+	uc := usecase.NewUserUseCase(repo, nil, nil)
 
 	user, err := uc.GetByID(id)
 	assert.NoError(t, err)
@@ -125,7 +133,7 @@ func TestGetByID_NotFound(t *testing.T) {
 	id := uuid.New()
 	repo.On("FindByID", id).Return(nil, model.ErrNotFound)
 
-	uc := usecase.NewUserUseCase(repo, nil)
+	uc := usecase.NewUserUseCase(repo, nil, nil)
 
 	_, err := uc.GetByID(id)
 	assert.ErrorIs(t, err, model.ErrNotFound)
@@ -138,7 +146,7 @@ func TestGetAll_Success(t *testing.T) {
 	users := []*model.User{{Name: "Alice"}, {Name: "Bob"}}
 	repo.On("FindAll").Return(users, nil)
 
-	uc := usecase.NewUserUseCase(repo, nil)
+	uc := usecase.NewUserUseCase(repo, nil, nil)
 
 	result, err := uc.GetAll()
 	assert.NoError(t, err)
@@ -154,7 +162,7 @@ func TestUpdate_Success(t *testing.T) {
 	repo.On("FindByID", id).Return(existing, nil)
 	repo.On("Update", mock.AnythingOfType("*model.User")).Return(nil)
 
-	uc := usecase.NewUserUseCase(repo, nil)
+	uc := usecase.NewUserUseCase(repo, nil, nil)
 
 	user, err := uc.Update(id, usecase.UpdateUserInput{
 		Name:  "Alice Updated",
@@ -175,7 +183,7 @@ func TestUpdate_PasswordIsHashed(t *testing.T) {
 	repo.On("FindByID", id).Return(existing, nil)
 	repo.On("Update", mock.AnythingOfType("*model.User")).Return(nil)
 
-	uc := usecase.NewUserUseCase(repo, nil)
+	uc := usecase.NewUserUseCase(repo, nil, nil)
 
 	user, err := uc.Update(id, usecase.UpdateUserInput{Password: "newpass123"})
 
@@ -189,7 +197,7 @@ func TestUpdate_NotFound(t *testing.T) {
 	id := uuid.New()
 	repo.On("FindByID", id).Return(nil, model.ErrNotFound)
 
-	uc := usecase.NewUserUseCase(repo, nil)
+	uc := usecase.NewUserUseCase(repo, nil, nil)
 
 	_, err := uc.Update(id, usecase.UpdateUserInput{Name: "X"})
 	assert.ErrorIs(t, err, model.ErrNotFound)
@@ -203,7 +211,7 @@ func TestDelete_Success(t *testing.T) {
 	repo.On("FindByID", id).Return(&model.User{ID: id}, nil)
 	repo.On("Delete", id).Return(nil)
 
-	uc := usecase.NewUserUseCase(repo, nil)
+	uc := usecase.NewUserUseCase(repo, nil, nil)
 
 	err := uc.Delete(id)
 	assert.NoError(t, err)
@@ -215,7 +223,7 @@ func TestDelete_NotFound(t *testing.T) {
 	id := uuid.New()
 	repo.On("FindByID", id).Return(nil, model.ErrNotFound)
 
-	uc := usecase.NewUserUseCase(repo, nil)
+	uc := usecase.NewUserUseCase(repo, nil, nil)
 
 	err := uc.Delete(id)
 	assert.ErrorIs(t, err, model.ErrNotFound)
@@ -235,7 +243,7 @@ func TestUploadAvatar_Success(t *testing.T) {
 	}), []byte("img-data"), "image/png").Return("https://cdn.example.com/avatar.png", nil)
 	repo.On("UpdateAvatarURL", id, "https://cdn.example.com/avatar.png").Return(nil)
 
-	uc := usecase.NewUserUseCase(repo, uploader)
+	uc := usecase.NewUserUseCase(repo, uploader, nil)
 
 	user, err := uc.UploadAvatar(id, []byte("img-data"), "image/png")
 
@@ -250,7 +258,7 @@ func TestUploadAvatar_UserNotFound(t *testing.T) {
 	id := uuid.New()
 	repo.On("FindByID", id).Return(nil, model.ErrNotFound)
 
-	uc := usecase.NewUserUseCase(repo, nil)
+	uc := usecase.NewUserUseCase(repo, nil, nil)
 
 	_, err := uc.UploadAvatar(id, []byte("img"), "image/png")
 	assert.ErrorIs(t, err, model.ErrNotFound)
@@ -265,7 +273,7 @@ func TestUploadAvatar_UploadError(t *testing.T) {
 	uploader.On("UploadFile", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return("", errors.New("storage unavailable"))
 
-	uc := usecase.NewUserUseCase(repo, uploader)
+	uc := usecase.NewUserUseCase(repo, uploader, nil)
 
 	_, err := uc.UploadAvatar(id, []byte("img"), "image/jpeg")
 	assert.Error(t, err)

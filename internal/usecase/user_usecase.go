@@ -1,15 +1,22 @@
 package usecase
 
 import (
+	"context"
+
 	"github.com/google/uuid"
 
 	"facilitador-de-doacoes/internal/model"
 )
 
+// RoleSetter persists the Auth0 app_metadata role so the Login Action can inject
+// it as a custom claim on the next token issuance.
+type RoleSetter interface {
+	SetUserRole(ctx context.Context, auth0UserID, role string) error
+}
+
 type CreateUserInput struct {
-	Name      string `json:"name"      binding:"required"`
-	Email     string `json:"email"     binding:"required,email"`
-	Password  string `json:"password"  binding:"required,min=6"`
+	Name      string `json:"name"  binding:"required"`
+	Email     string `json:"email" binding:"required,email"`
 	Role      string `json:"role"`
 	CPF       string `json:"cpf"`
 	Birthdate string `json:"birthdate"`
@@ -27,7 +34,7 @@ type UpdateUserInput struct {
 }
 
 type UserUseCase interface {
-	Create(input CreateUserInput) (*model.User, error)
+	Create(auth0ID string, input CreateUserInput) (*model.User, error)
 	GetByID(id uuid.UUID) (*model.User, error)
 	GetByAuth0ID(auth0ID string) (*model.User, error)
 	GetAll() ([]*model.User, error)

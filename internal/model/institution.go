@@ -17,7 +17,7 @@ const (
 
 type Institution struct {
 	ID              uuid.UUID         `gorm:"type:uuid;primaryKey"        json:"id"`
-	UserID          uuid.UUID         `gorm:"type:uuid;not null;index"    json:"user_id"`
+	Auth0ID         string            `gorm:"uniqueIndex;not null"        json:"auth0_id,omitempty"`
 	Name            string            `gorm:"not null"                    json:"name"`
 	LegalName       string            `gorm:"not null"                    json:"legal_name"`
 	CNPJ            string            `gorm:"uniqueIndex;not null"        json:"cnpj"`

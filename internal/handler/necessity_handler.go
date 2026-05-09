@@ -8,31 +8,29 @@ import (
 	"github.com/google/uuid"
 
 	"facilitador-de-doacoes/internal/model"
-	"facilitador-de-doacoes/internal/repository"
 	"facilitador-de-doacoes/internal/usecase"
 )
 
-type CampaignHandler struct {
-	uc usecase.CampaignUseCase
+type NecessityHandler struct {
+	uc usecase.NecessityUseCase
 }
 
-func NewCampaignHandler(uc usecase.CampaignUseCase) *CampaignHandler {
-	return &CampaignHandler{uc: uc}
+func NewNecessityHandler(uc usecase.NecessityUseCase) *NecessityHandler {
+	return &NecessityHandler{uc: uc}
 }
 
-func (h *CampaignHandler) RegisterRoutes(r *gin.RouterGroup, authMiddlewares ...gin.HandlerFunc) {
-	r.GET("/campaigns", h.GetAll)
-	r.GET("/campaigns/:id", h.GetByID)
-	r.GET("/institutions/:id/campaigns", h.GetByInstitution)
+func (h *NecessityHandler) RegisterRoutes(r *gin.RouterGroup, authMiddlewares ...gin.HandlerFunc) {
+	r.GET("/institutions/:id/necessities", h.GetByInstitution)
+	r.GET("/necessities/:id", h.GetByID)
 
 	protected := r.Group("", authMiddlewares...)
-	protected.POST("/institutions/:id/campaigns", h.Create)
-	protected.PUT("/campaigns/:id", h.Update)
-	protected.DELETE("/campaigns/:id", h.Delete)
-	protected.PATCH("/campaigns/:id/status", h.UpdateStatus)
+	protected.POST("/institutions/:id/necessities", h.Create)
+	protected.PUT("/necessities/:id", h.Update)
+	protected.DELETE("/necessities/:id", h.Delete)
+	protected.PATCH("/necessities/:id/status", h.UpdateStatus)
 }
 
-func (h *CampaignHandler) Create(c *gin.Context) {
+func (h *NecessityHandler) Create(c *gin.Context) {
 	pathInstID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid institution_id"})
@@ -51,78 +49,58 @@ func (h *CampaignHandler) Create(c *gin.Context) {
 		return
 	}
 
-	var input usecase.CreateCampaignInput
+	var input usecase.CreateNecessityInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	campaign, err := h.uc.Create(institutionID, input)
+	necessity, err := h.uc.Create(institutionID, input)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusCreated, campaign)
+	c.JSON(http.StatusCreated, necessity)
 }
 
-func (h *CampaignHandler) GetAll(c *gin.Context) {
-	filters := repository.CampaignFilters{
-		Keyword: c.Query("keyword"),
-	}
-
-	if urgentStr := c.Query("is_urgent"); urgentStr == "true" {
-		v := true
-		filters.IsUrgent = &v
-	} else if urgentStr == "false" {
-		v := false
-		filters.IsUrgent = &v
-	}
-
-	campaigns, err := h.uc.GetAll(filters)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, campaigns)
-}
-
-func (h *CampaignHandler) GetByInstitution(c *gin.Context) {
+func (h *NecessityHandler) GetByInstitution(c *gin.Context) {
 	institutionID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid institution_id"})
 		return
 	}
 
-	campaigns, err := h.uc.GetByInstitutionID(institutionID)
+	necessities, err := h.uc.GetByInstitutionID(institutionID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, campaigns)
+
+	c.JSON(http.StatusOK, necessities)
 }
 
-func (h *CampaignHandler) GetByID(c *gin.Context) {
+func (h *NecessityHandler) GetByID(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
 		return
 	}
 
-	campaign, err := h.uc.GetByID(id)
+	necessity, err := h.uc.GetByID(id)
 	if err != nil {
 		if errors.Is(err, model.ErrNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "campaign not found"})
+			c.JSON(http.StatusNotFound, gin.H{"error": "necessity not found"})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, campaign)
+	c.JSON(http.StatusOK, necessity)
 }
 
-func (h *CampaignHandler) Update(c *gin.Context) {
+func (h *NecessityHandler) Update(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
@@ -135,16 +113,16 @@ func (h *CampaignHandler) Update(c *gin.Context) {
 		return
 	}
 
-	var input usecase.UpdateCampaignInput
+	var input usecase.UpdateNecessityInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	campaign, err := h.uc.Update(id, ctxInstID.(uuid.UUID), input)
+	necessity, err := h.uc.Update(id, ctxInstID.(uuid.UUID), input)
 	if err != nil {
 		if errors.Is(err, model.ErrNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "campaign not found"})
+			c.JSON(http.StatusNotFound, gin.H{"error": "necessity not found"})
 			return
 		}
 		if errors.Is(err, model.ErrUnauthorized) {
@@ -155,10 +133,10 @@ func (h *CampaignHandler) Update(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, campaign)
+	c.JSON(http.StatusOK, necessity)
 }
 
-func (h *CampaignHandler) Delete(c *gin.Context) {
+func (h *NecessityHandler) Delete(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
@@ -173,7 +151,7 @@ func (h *CampaignHandler) Delete(c *gin.Context) {
 
 	if err := h.uc.Delete(id, ctxInstID.(uuid.UUID)); err != nil {
 		if errors.Is(err, model.ErrNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "campaign not found"})
+			c.JSON(http.StatusNotFound, gin.H{"error": "necessity not found"})
 			return
 		}
 		if errors.Is(err, model.ErrUnauthorized) {
@@ -187,7 +165,7 @@ func (h *CampaignHandler) Delete(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-func (h *CampaignHandler) UpdateStatus(c *gin.Context) {
+func (h *NecessityHandler) UpdateStatus(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
@@ -201,17 +179,17 @@ func (h *CampaignHandler) UpdateStatus(c *gin.Context) {
 	}
 
 	var body struct {
-		Status model.CampaignStatus `json:"status" binding:"required"`
+		Status model.NecessityStatus `json:"status" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	campaign, err := h.uc.UpdateStatus(id, ctxInstID.(uuid.UUID), body.Status)
+	necessity, err := h.uc.UpdateStatus(id, ctxInstID.(uuid.UUID), body.Status)
 	if err != nil {
 		if errors.Is(err, model.ErrNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "campaign not found"})
+			c.JSON(http.StatusNotFound, gin.H{"error": "necessity not found"})
 			return
 		}
 		if errors.Is(err, model.ErrUnauthorized) {
@@ -222,5 +200,5 @@ func (h *CampaignHandler) UpdateStatus(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, campaign)
+	c.JSON(http.StatusOK, necessity)
 }

@@ -21,13 +21,12 @@ func init() {
 	gin.SetMode(gin.TestMode)
 }
 
-// mockInstitutionUseCase implements usecase.InstitutionUseCase for testing.
 type mockInstitutionUseCase struct {
 	mock.Mock
 }
 
-func (m *mockInstitutionUseCase) Create(userID uuid.UUID, input usecase.CreateInstitutionInput) (*model.Institution, error) {
-	args := m.Called(userID, input)
+func (m *mockInstitutionUseCase) Create(auth0ID string, input usecase.CreateInstitutionInput) (*model.Institution, error) {
+	args := m.Called(auth0ID, input)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -50,25 +49,24 @@ func (m *mockInstitutionUseCase) GetAll() ([]*model.Institution, error) {
 	return args.Get(0).([]*model.Institution), args.Error(1)
 }
 
-func (m *mockInstitutionUseCase) GetByUserID(userID uuid.UUID) ([]*model.Institution, error) {
-	args := m.Called(userID)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).([]*model.Institution), args.Error(1)
-}
-
-func (m *mockInstitutionUseCase) Update(id uuid.UUID, userID uuid.UUID, input usecase.UpdateInstitutionInput) (*model.Institution, error) {
-	args := m.Called(id, userID, input)
+func (m *mockInstitutionUseCase) GetByAuth0ID(auth0ID string) (*model.Institution, error) {
+	args := m.Called(auth0ID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*model.Institution), args.Error(1)
 }
 
-func (m *mockInstitutionUseCase) Delete(id uuid.UUID, userID uuid.UUID) error {
-	args := m.Called(id, userID)
-	return args.Error(0)
+func (m *mockInstitutionUseCase) Update(id uuid.UUID, institutionID uuid.UUID, input usecase.UpdateInstitutionInput) (*model.Institution, error) {
+	args := m.Called(id, institutionID, input)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*model.Institution), args.Error(1)
+}
+
+func (m *mockInstitutionUseCase) Delete(id uuid.UUID, institutionID uuid.UUID) error {
+	return m.Called(id, institutionID).Error(0)
 }
 
 func (m *mockInstitutionUseCase) UpdateStatus(id uuid.UUID, input usecase.UpdateInstitutionStatusInput) (*model.Institution, error) {
@@ -79,7 +77,7 @@ func (m *mockInstitutionUseCase) UpdateStatus(id uuid.UUID, input usecase.Update
 	return args.Get(0).(*model.Institution), args.Error(1)
 }
 
-// fakeAuth injects a userID into the Gin context, simulating auth middleware.
+// fakeAuth injects userID into Gin context (for user-authenticated routes).
 func fakeAuth(userID uuid.UUID) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Set("userID", userID)
@@ -87,18 +85,38 @@ func fakeAuth(userID uuid.UUID) gin.HandlerFunc {
 	}
 }
 
-func setupRouter(uc usecase.InstitutionUseCase, userID uuid.UUID) *gin.Engine {
+// fakeAuthSub injects auth0_sub into Gin context (simulates AuthMiddleware).
+func fakeAuthSub(sub string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Set("auth0_sub", sub)
+		c.Next()
+	}
+}
+
+// fakeInstitutionAuth injects institutionID into Gin context (simulates RequireInstitution).
+func fakeInstitutionAuth(institutionID uuid.UUID) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Set("institutionID", institutionID)
+		c.Next()
+	}
+}
+
+func setupRouter(uc usecase.InstitutionUseCase, auth0Sub string, instID uuid.UUID) *gin.Engine {
 	r := gin.New()
 	h := handler.NewInstitutionHandler(uc)
 	api := r.Group("/api/v1")
-	h.RegisterRoutes(api, fakeAuth(userID))
+	h.RegisterRoutes(api,
+		[]gin.HandlerFunc{fakeAuthSub(auth0Sub)},
+		[]gin.HandlerFunc{fakeInstitutionAuth(instID)},
+	)
 	return r
 }
 
 func TestHandlerCreate_Success(t *testing.T) {
 	uc := &mockInstitutionUseCase{}
-	userID := uuid.New()
-	r := setupRouter(uc, userID)
+	auth0Sub := "auth0|abc123"
+	instID := uuid.New()
+	r := setupRouter(uc, auth0Sub, instID)
 
 	input := usecase.CreateInstitutionInput{
 		Name:      "ONG Esperança",
@@ -106,14 +124,14 @@ func TestHandlerCreate_Success(t *testing.T) {
 		CNPJ:      "12.345.678/0001-90",
 	}
 	expected := &model.Institution{
-		ID:     uuid.New(),
-		UserID: userID,
-		Name:   input.Name,
-		CNPJ:   input.CNPJ,
-		Status: model.InstitutionStatusPending,
+		ID:      instID,
+		Auth0ID: auth0Sub,
+		Name:    input.Name,
+		CNPJ:    input.CNPJ,
+		Status:  model.InstitutionStatusPending,
 	}
 
-	uc.On("Create", userID, input).Return(expected, nil)
+	uc.On("Create", auth0Sub, input).Return(expected, nil)
 
 	body, _ := json.Marshal(input)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/institutions", bytes.NewBuffer(body))
@@ -131,11 +149,9 @@ func TestHandlerCreate_Success(t *testing.T) {
 
 func TestHandlerCreate_BadRequest(t *testing.T) {
 	uc := &mockInstitutionUseCase{}
-	r := setupRouter(uc, uuid.New())
+	r := setupRouter(uc, "auth0|x", uuid.New())
 
-	// Missing required fields
-	body := []byte(`{}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/institutions", bytes.NewBuffer(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/institutions", bytes.NewBuffer([]byte(`{}`)))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
@@ -146,16 +162,15 @@ func TestHandlerCreate_BadRequest(t *testing.T) {
 
 func TestHandlerCreate_CNPJConflict(t *testing.T) {
 	uc := &mockInstitutionUseCase{}
-	userID := uuid.New()
-	r := setupRouter(uc, userID)
+	auth0Sub := "auth0|abc123"
+	r := setupRouter(uc, auth0Sub, uuid.New())
 
 	input := usecase.CreateInstitutionInput{
 		Name:      "ONG Esperança",
 		LegalName: "ONG Esperança LTDA",
 		CNPJ:      "12.345.678/0001-90",
 	}
-
-	uc.On("Create", userID, input).Return(nil, model.ErrCNPJAlreadyInUse)
+	uc.On("Create", auth0Sub, input).Return(nil, model.ErrCNPJAlreadyInUse)
 
 	body, _ := json.Marshal(input)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/institutions", bytes.NewBuffer(body))
@@ -170,7 +185,7 @@ func TestHandlerCreate_CNPJConflict(t *testing.T) {
 
 func TestHandlerGetAll_Success(t *testing.T) {
 	uc := &mockInstitutionUseCase{}
-	r := setupRouter(uc, uuid.New())
+	r := setupRouter(uc, "auth0|x", uuid.New())
 
 	institutions := []*model.Institution{
 		{ID: uuid.New(), Name: "ONG A"},
@@ -192,7 +207,7 @@ func TestHandlerGetAll_Success(t *testing.T) {
 
 func TestHandlerGetByID_Success(t *testing.T) {
 	uc := &mockInstitutionUseCase{}
-	r := setupRouter(uc, uuid.New())
+	r := setupRouter(uc, "auth0|x", uuid.New())
 
 	id := uuid.New()
 	expected := &model.Institution{ID: id, Name: "ONG Esperança"}
@@ -212,7 +227,7 @@ func TestHandlerGetByID_Success(t *testing.T) {
 
 func TestHandlerGetByID_NotFound(t *testing.T) {
 	uc := &mockInstitutionUseCase{}
-	r := setupRouter(uc, uuid.New())
+	r := setupRouter(uc, "auth0|x", uuid.New())
 
 	id := uuid.New()
 	uc.On("GetByID", id).Return(nil, model.ErrNotFound)
@@ -228,7 +243,7 @@ func TestHandlerGetByID_NotFound(t *testing.T) {
 
 func TestHandlerGetByID_InvalidUUID(t *testing.T) {
 	uc := &mockInstitutionUseCase{}
-	r := setupRouter(uc, uuid.New())
+	r := setupRouter(uc, "auth0|x", uuid.New())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/institutions/not-a-uuid", nil)
 	w := httptest.NewRecorder()
@@ -240,17 +255,16 @@ func TestHandlerGetByID_InvalidUUID(t *testing.T) {
 
 func TestHandlerUpdate_Success(t *testing.T) {
 	uc := &mockInstitutionUseCase{}
-	userID := uuid.New()
-	r := setupRouter(uc, userID)
+	instID := uuid.New()
+	r := setupRouter(uc, "auth0|x", instID)
 
-	id := uuid.New()
 	input := usecase.UpdateInstitutionInput{Name: "ONG Atualizada"}
-	expected := &model.Institution{ID: id, Name: "ONG Atualizada"}
+	expected := &model.Institution{ID: instID, Name: "ONG Atualizada"}
 
-	uc.On("Update", id, userID, input).Return(expected, nil)
+	uc.On("Update", instID, instID, input).Return(expected, nil)
 
 	body, _ := json.Marshal(input)
-	req := httptest.NewRequest(http.MethodPut, "/api/v1/institutions/"+id.String(), bytes.NewBuffer(body))
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/institutions/"+instID.String(), bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
@@ -262,16 +276,14 @@ func TestHandlerUpdate_Success(t *testing.T) {
 
 func TestHandlerUpdate_NotFound(t *testing.T) {
 	uc := &mockInstitutionUseCase{}
-	userID := uuid.New()
-	r := setupRouter(uc, userID)
+	instID := uuid.New()
+	r := setupRouter(uc, "auth0|x", instID)
 
-	id := uuid.New()
 	input := usecase.UpdateInstitutionInput{Name: "Nova"}
-
-	uc.On("Update", id, userID, input).Return(nil, model.ErrNotFound)
+	uc.On("Update", instID, instID, input).Return(nil, model.ErrNotFound)
 
 	body, _ := json.Marshal(input)
-	req := httptest.NewRequest(http.MethodPut, "/api/v1/institutions/"+id.String(), bytes.NewBuffer(body))
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/institutions/"+instID.String(), bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
@@ -283,16 +295,15 @@ func TestHandlerUpdate_NotFound(t *testing.T) {
 
 func TestHandlerUpdate_Forbidden(t *testing.T) {
 	uc := &mockInstitutionUseCase{}
-	userID := uuid.New()
-	r := setupRouter(uc, userID)
+	instID := uuid.New()
+	otherInstID := uuid.New()
+	r := setupRouter(uc, "auth0|x", instID) // authenticated as instID
 
-	id := uuid.New()
 	input := usecase.UpdateInstitutionInput{Name: "Nova"}
-
-	uc.On("Update", id, userID, input).Return(nil, model.ErrUnauthorized)
+	uc.On("Update", otherInstID, instID, input).Return(nil, model.ErrUnauthorized)
 
 	body, _ := json.Marshal(input)
-	req := httptest.NewRequest(http.MethodPut, "/api/v1/institutions/"+id.String(), bytes.NewBuffer(body))
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/institutions/"+otherInstID.String(), bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
@@ -304,13 +315,12 @@ func TestHandlerUpdate_Forbidden(t *testing.T) {
 
 func TestHandlerDelete_Success(t *testing.T) {
 	uc := &mockInstitutionUseCase{}
-	userID := uuid.New()
-	r := setupRouter(uc, userID)
+	instID := uuid.New()
+	r := setupRouter(uc, "auth0|x", instID)
 
-	id := uuid.New()
-	uc.On("Delete", id, userID).Return(nil)
+	uc.On("Delete", instID, instID).Return(nil)
 
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/institutions/"+id.String(), nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/institutions/"+instID.String(), nil)
 	w := httptest.NewRecorder()
 
 	r.ServeHTTP(w, req)
@@ -321,13 +331,12 @@ func TestHandlerDelete_Success(t *testing.T) {
 
 func TestHandlerDelete_NotFound(t *testing.T) {
 	uc := &mockInstitutionUseCase{}
-	userID := uuid.New()
-	r := setupRouter(uc, userID)
+	instID := uuid.New()
+	r := setupRouter(uc, "auth0|x", instID)
 
-	id := uuid.New()
-	uc.On("Delete", id, userID).Return(model.ErrNotFound)
+	uc.On("Delete", instID, instID).Return(model.ErrNotFound)
 
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/institutions/"+id.String(), nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/institutions/"+instID.String(), nil)
 	w := httptest.NewRecorder()
 
 	r.ServeHTTP(w, req)
@@ -338,13 +347,13 @@ func TestHandlerDelete_NotFound(t *testing.T) {
 
 func TestHandlerDelete_Forbidden(t *testing.T) {
 	uc := &mockInstitutionUseCase{}
-	userID := uuid.New()
-	r := setupRouter(uc, userID)
+	instID := uuid.New()
+	otherInstID := uuid.New()
+	r := setupRouter(uc, "auth0|x", instID)
 
-	id := uuid.New()
-	uc.On("Delete", id, userID).Return(model.ErrUnauthorized)
+	uc.On("Delete", otherInstID, instID).Return(model.ErrUnauthorized)
 
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/institutions/"+id.String(), nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/institutions/"+otherInstID.String(), nil)
 	w := httptest.NewRecorder()
 
 	r.ServeHTTP(w, req)
@@ -355,12 +364,10 @@ func TestHandlerDelete_Forbidden(t *testing.T) {
 
 func TestHandlerUpdateStatus_Success(t *testing.T) {
 	uc := &mockInstitutionUseCase{}
-	r := setupRouter(uc, uuid.New())
+	r := setupRouter(uc, "auth0|x", uuid.New())
 
 	id := uuid.New()
-	input := usecase.UpdateInstitutionStatusInput{
-		Status: model.InstitutionStatusApproved,
-	}
+	input := usecase.UpdateInstitutionStatusInput{Status: model.InstitutionStatusApproved}
 	expected := &model.Institution{ID: id, Status: model.InstitutionStatusApproved}
 
 	uc.On("UpdateStatus", id, input).Return(expected, nil)
@@ -378,7 +385,7 @@ func TestHandlerUpdateStatus_Success(t *testing.T) {
 
 func TestHandlerUpdateStatus_NotFound(t *testing.T) {
 	uc := &mockInstitutionUseCase{}
-	r := setupRouter(uc, uuid.New())
+	r := setupRouter(uc, "auth0|x", uuid.New())
 
 	id := uuid.New()
 	input := usecase.UpdateInstitutionStatusInput{Status: model.InstitutionStatusApproved}

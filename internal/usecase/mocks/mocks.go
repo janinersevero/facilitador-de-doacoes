@@ -149,6 +149,40 @@ func (m *MockCampaignRepository) IncrementTotalRaised(id uuid.UUID, amount int64
 	return m.Called(id, amount).Error(0)
 }
 
+// ---------- NecessityRepository ----------
+
+type MockNecessityRepository struct {
+	mock.Mock
+}
+
+func (m *MockNecessityRepository) Create(necessity *model.Necessity) error {
+	return m.Called(necessity).Error(0)
+}
+
+func (m *MockNecessityRepository) FindByID(id uuid.UUID) (*model.Necessity, error) {
+	args := m.Called(id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*model.Necessity), args.Error(1)
+}
+
+func (m *MockNecessityRepository) FindByInstitutionID(institutionID uuid.UUID) ([]*model.Necessity, error) {
+	args := m.Called(institutionID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*model.Necessity), args.Error(1)
+}
+
+func (m *MockNecessityRepository) Update(necessity *model.Necessity) error {
+	return m.Called(necessity).Error(0)
+}
+
+func (m *MockNecessityRepository) Delete(id uuid.UUID) error {
+	return m.Called(id).Error(0)
+}
+
 // ---------- FileUploader ----------
 
 type MockFileUploader struct {
@@ -158,6 +192,16 @@ type MockFileUploader struct {
 func (m *MockFileUploader) UploadFile(ctx context.Context, fileName string, data []byte, contentType string) (string, error) {
 	args := m.Called(ctx, fileName, data, contentType)
 	return args.String(0), args.Error(1)
+}
+
+// ---------- RoleSetter ----------
+
+type MockRoleSetter struct {
+	mock.Mock
+}
+
+func (m *MockRoleSetter) SetUserRole(ctx context.Context, auth0UserID, role string) error {
+	return m.Called(ctx, auth0UserID, role).Error(0)
 }
 
 // ---------- PixClient ----------

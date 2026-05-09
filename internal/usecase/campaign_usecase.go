@@ -30,11 +30,11 @@ type UpdateCampaignInput struct {
 }
 
 type CampaignUseCase interface {
-	Create(userID uuid.UUID, institutionID uuid.UUID, input CreateCampaignInput) (*model.Campaign, error)
+	Create(institutionID uuid.UUID, input CreateCampaignInput) (*model.Campaign, error)
 	GetByID(id uuid.UUID) (*model.Campaign, error)
 	GetAll(filters repository.CampaignFilters) ([]*model.Campaign, error)
 	GetByInstitutionID(institutionID uuid.UUID) ([]*model.Campaign, error)
-	Update(id uuid.UUID, userID uuid.UUID, input UpdateCampaignInput) (*model.Campaign, error)
-	Delete(id uuid.UUID, userID uuid.UUID) error
-	UpdateStatus(id uuid.UUID, userID uuid.UUID, status model.CampaignStatus) (*model.Campaign, error)
+	Update(id uuid.UUID, institutionID uuid.UUID, input UpdateCampaignInput) (*model.Campaign, error)
+	Delete(id uuid.UUID, institutionID uuid.UUID) error
+	UpdateStatus(id uuid.UUID, institutionID uuid.UUID, status model.CampaignStatus) (*model.Campaign, error)
 }

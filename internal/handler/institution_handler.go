@@ -12,6 +12,8 @@ import (
 )
 
 const userIDKey = "userID"
+const institutionIDKey = "institutionID"
+const auth0SubKey = "auth0_sub"
 
 type InstitutionHandler struct {
 	uc usecase.InstitutionUseCase
@@ -22,22 +24,26 @@ func NewInstitutionHandler(uc usecase.InstitutionUseCase) *InstitutionHandler {
 }
 
 // RegisterRoutes registers public and protected routes.
-// authMiddlewares are applied only to write endpoints.
-func (h *InstitutionHandler) RegisterRoutes(r *gin.RouterGroup, authMiddlewares ...gin.HandlerFunc) {
+// authOnly middlewares are applied to POST and PATCH /status.
+// institutionAuth middlewares are applied to PUT and DELETE (requires institution identity).
+func (h *InstitutionHandler) RegisterRoutes(r *gin.RouterGroup, authOnly []gin.HandlerFunc, institutionAuth []gin.HandlerFunc) {
 	g := r.Group("/institutions")
 
 	g.GET("", h.GetAll)
 	g.GET("/:id", h.GetByID)
 
-	protected := g.Group("", authMiddlewares...)
-	protected.POST("", h.Create)
-	protected.PUT("/:id", h.Update)
-	protected.DELETE("/:id", h.Delete)
-	protected.PATCH("/:id/status", h.UpdateStatus)
+	authGroup := g.Group("", authOnly...)
+	authGroup.POST("", h.Create)
+	authGroup.PATCH("/:id/status", h.UpdateStatus)
+
+	instGroup := g.Group("", institutionAuth...)
+	instGroup.GET("/me", h.GetMe)
+	instGroup.PUT("/:id", h.Update)
+	instGroup.DELETE("/:id", h.Delete)
 }
 
 func (h *InstitutionHandler) Create(c *gin.Context) {
-	userID, ok := c.Get(userIDKey)
+	auth0Sub, ok := c.Get(auth0SubKey)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
@@ -49,7 +55,7 @@ func (h *InstitutionHandler) Create(c *gin.Context) {
 		return
 	}
 
-	institution, err := h.uc.Create(userID.(uuid.UUID), input)
+	institution, err := h.uc.Create(auth0Sub.(string), input)
 	if err != nil {
 		if errors.Is(err, model.ErrCNPJAlreadyInUse) {
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
@@ -91,6 +97,26 @@ func (h *InstitutionHandler) GetByID(c *gin.Context) {
 	c.JSON(http.StatusOK, institution)
 }
 
+func (h *InstitutionHandler) GetMe(c *gin.Context) {
+	institutionID, ok := c.Get(institutionIDKey)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	institution, err := h.uc.GetByID(institutionID.(uuid.UUID))
+	if err != nil {
+		if errors.Is(err, model.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "institution not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, institution)
+}
+
 func (h *InstitutionHandler) Update(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -98,7 +124,7 @@ func (h *InstitutionHandler) Update(c *gin.Context) {
 		return
 	}
 
-	userID, ok := c.Get(userIDKey)
+	institutionID, ok := c.Get(institutionIDKey)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
@@ -110,7 +136,7 @@ func (h *InstitutionHandler) Update(c *gin.Context) {
 		return
 	}
 
-	institution, err := h.uc.Update(id, userID.(uuid.UUID), input)
+	institution, err := h.uc.Update(id, institutionID.(uuid.UUID), input)
 	if err != nil {
 		if errors.Is(err, model.ErrNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "institution not found"})
@@ -134,13 +160,13 @@ func (h *InstitutionHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	userID, ok := c.Get(userIDKey)
+	institutionID, ok := c.Get(institutionIDKey)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
 
-	if err := h.uc.Delete(id, userID.(uuid.UUID)); err != nil {
+	if err := h.uc.Delete(id, institutionID.(uuid.UUID)); err != nil {
 		if errors.Is(err, model.ErrNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "institution not found"})
 			return

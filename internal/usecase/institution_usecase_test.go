@@ -1,6 +1,7 @@
 package usecase_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -12,14 +13,18 @@ import (
 	"facilitador-de-doacoes/internal/usecase"
 )
 
-// mockInstitutionRepo implements repository.InstitutionRepository for testing.
+type mockRoleSetter struct{ mock.Mock }
+
+func (m *mockRoleSetter) SetUserRole(ctx context.Context, auth0UserID, role string) error {
+	return m.Called(ctx, auth0UserID, role).Error(0)
+}
+
 type mockInstitutionRepo struct {
 	mock.Mock
 }
 
 func (m *mockInstitutionRepo) Create(institution *model.Institution) error {
-	args := m.Called(institution)
-	return args.Error(0)
+	return m.Called(institution).Error(0)
 }
 
 func (m *mockInstitutionRepo) FindByID(id uuid.UUID) (*model.Institution, error) {
@@ -38,12 +43,12 @@ func (m *mockInstitutionRepo) FindByCNPJ(cnpj string) (*model.Institution, error
 	return args.Get(0).(*model.Institution), args.Error(1)
 }
 
-func (m *mockInstitutionRepo) FindByUserID(userID uuid.UUID) ([]*model.Institution, error) {
-	args := m.Called(userID)
+func (m *mockInstitutionRepo) FindByAuth0ID(auth0ID string) (*model.Institution, error) {
+	args := m.Called(auth0ID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).([]*model.Institution), args.Error(1)
+	return args.Get(0).(*model.Institution), args.Error(1)
 }
 
 func (m *mockInstitutionRepo) FindAll() ([]*model.Institution, error) {
@@ -55,24 +60,23 @@ func (m *mockInstitutionRepo) FindAll() ([]*model.Institution, error) {
 }
 
 func (m *mockInstitutionRepo) Update(institution *model.Institution) error {
-	args := m.Called(institution)
-	return args.Error(0)
+	return m.Called(institution).Error(0)
 }
 
 func (m *mockInstitutionRepo) Delete(id uuid.UUID) error {
-	args := m.Called(id)
-	return args.Error(0)
+	return m.Called(id).Error(0)
 }
 
 func newInstitutionUseCase(repo *mockInstitutionRepo) usecase.InstitutionUseCase {
-	return usecase.NewInstitutionUseCase(repo)
+	return usecase.NewInstitutionUseCase(repo, nil)
 }
 
 func TestInstitutionCreate_Success(t *testing.T) {
 	repo := &mockInstitutionRepo{}
-	uc := newInstitutionUseCase(repo)
+	roleSetter := new(mockRoleSetter)
+	uc := usecase.NewInstitutionUseCase(repo, roleSetter)
 
-	userID := uuid.New()
+	auth0ID := "auth0|abc123"
 	input := usecase.CreateInstitutionInput{
 		Name:      "ONG Esperança",
 		LegalName: "ONG Esperança LTDA",
@@ -80,20 +84,23 @@ func TestInstitutionCreate_Success(t *testing.T) {
 		Category:  "social",
 	}
 
+	repo.On("FindByAuth0ID", auth0ID).Return(nil, model.ErrNotFound)
 	repo.On("FindByCNPJ", input.CNPJ).Return(nil, model.ErrNotFound)
 	repo.On("Create", mock.MatchedBy(func(i *model.Institution) bool {
-		return i.Name == input.Name && i.CNPJ == input.CNPJ && i.UserID == userID
+		return i.Name == input.Name && i.CNPJ == input.CNPJ && i.Auth0ID == auth0ID
 	})).Return(nil)
+	roleSetter.On("SetUserRole", mock.Anything, auth0ID, "institution").Return(nil)
 
-	institution, err := uc.Create(userID, input)
+	institution, err := uc.Create(auth0ID, input)
 
 	assert.NoError(t, err)
 	assert.Equal(t, input.Name, institution.Name)
 	assert.Equal(t, input.LegalName, institution.LegalName)
 	assert.Equal(t, input.CNPJ, institution.CNPJ)
-	assert.Equal(t, userID, institution.UserID)
+	assert.Equal(t, auth0ID, institution.Auth0ID)
 	assert.Equal(t, model.InstitutionStatusPending, institution.Status)
 	repo.AssertExpectations(t)
+	roleSetter.AssertExpectations(t)
 }
 
 func TestInstitutionCreate_CNPJAlreadyInUse(t *testing.T) {
@@ -107,9 +114,10 @@ func TestInstitutionCreate_CNPJAlreadyInUse(t *testing.T) {
 	}
 	existing := &model.Institution{ID: uuid.New(), CNPJ: input.CNPJ}
 
+	repo.On("FindByAuth0ID", "auth0|other").Return(nil, model.ErrNotFound)
 	repo.On("FindByCNPJ", input.CNPJ).Return(existing, nil)
 
-	_, err := uc.Create(uuid.New(), input)
+	_, err := uc.Create("auth0|other", input)
 
 	assert.ErrorIs(t, err, model.ErrCNPJAlreadyInUse)
 	repo.AssertExpectations(t)
@@ -162,21 +170,19 @@ func TestInstitutionGetAll_Success(t *testing.T) {
 	repo.AssertExpectations(t)
 }
 
-func TestInstitutionGetByUserID_Success(t *testing.T) {
+func TestInstitutionGetByAuth0ID_Success(t *testing.T) {
 	repo := &mockInstitutionRepo{}
 	uc := newInstitutionUseCase(repo)
 
-	userID := uuid.New()
-	institutions := []*model.Institution{
-		{ID: uuid.New(), UserID: userID, Name: "ONG A"},
-	}
+	auth0ID := "auth0|abc123"
+	expected := &model.Institution{ID: uuid.New(), Auth0ID: auth0ID, Name: "ONG A"}
 
-	repo.On("FindByUserID", userID).Return(institutions, nil)
+	repo.On("FindByAuth0ID", auth0ID).Return(expected, nil)
 
-	result, err := uc.GetByUserID(userID)
+	result, err := uc.GetByAuth0ID(auth0ID)
 
 	assert.NoError(t, err)
-	assert.Len(t, result, 1)
+	assert.Equal(t, expected, result)
 	repo.AssertExpectations(t)
 }
 
@@ -184,23 +190,16 @@ func TestInstitutionUpdate_Success(t *testing.T) {
 	repo := &mockInstitutionRepo{}
 	uc := newInstitutionUseCase(repo)
 
-	userID := uuid.New()
 	id := uuid.New()
-	existing := &model.Institution{
-		ID:     id,
-		UserID: userID,
-		Name:   "ONG Velha",
-	}
-	input := usecase.UpdateInstitutionInput{
-		Name: "ONG Nova",
-	}
+	existing := &model.Institution{ID: id, Name: "ONG Velha"}
+	input := usecase.UpdateInstitutionInput{Name: "ONG Nova"}
 
 	repo.On("FindByID", id).Return(existing, nil)
 	repo.On("Update", mock.MatchedBy(func(i *model.Institution) bool {
 		return i.Name == "ONG Nova"
 	})).Return(nil)
 
-	institution, err := uc.Update(id, userID, input)
+	institution, err := uc.Update(id, id, input) // id == institutionID (updating itself)
 
 	assert.NoError(t, err)
 	assert.Equal(t, "ONG Nova", institution.Name)
@@ -214,7 +213,7 @@ func TestInstitutionUpdate_NotFound(t *testing.T) {
 	id := uuid.New()
 	repo.On("FindByID", id).Return(nil, model.ErrNotFound)
 
-	_, err := uc.Update(id, uuid.New(), usecase.UpdateInstitutionInput{Name: "Nova"})
+	_, err := uc.Update(id, id, usecase.UpdateInstitutionInput{Name: "Nova"})
 
 	assert.ErrorIs(t, err, model.ErrNotFound)
 	repo.AssertExpectations(t)
@@ -224,31 +223,25 @@ func TestInstitutionUpdate_Unauthorized(t *testing.T) {
 	repo := &mockInstitutionRepo{}
 	uc := newInstitutionUseCase(repo)
 
-	ownerID := uuid.New()
-	otherUserID := uuid.New()
 	id := uuid.New()
-	existing := &model.Institution{ID: id, UserID: ownerID, Name: "ONG"}
+	otherInstID := uuid.New()
 
-	repo.On("FindByID", id).Return(existing, nil)
-
-	_, err := uc.Update(id, otherUserID, usecase.UpdateInstitutionInput{Name: "Nova"})
+	// id != otherInstID → ErrUnauthorized without hitting repo
+	_, err := uc.Update(id, otherInstID, usecase.UpdateInstitutionInput{Name: "Nova"})
 
 	assert.ErrorIs(t, err, model.ErrUnauthorized)
-	repo.AssertExpectations(t)
+	repo.AssertExpectations(t) // no repo calls expected
 }
 
 func TestInstitutionDelete_Success(t *testing.T) {
 	repo := &mockInstitutionRepo{}
 	uc := newInstitutionUseCase(repo)
 
-	userID := uuid.New()
 	id := uuid.New()
-	existing := &model.Institution{ID: id, UserID: userID}
-
-	repo.On("FindByID", id).Return(existing, nil)
+	repo.On("FindByID", id).Return(&model.Institution{ID: id}, nil)
 	repo.On("Delete", id).Return(nil)
 
-	err := uc.Delete(id, userID)
+	err := uc.Delete(id, id)
 
 	assert.NoError(t, err)
 	repo.AssertExpectations(t)
@@ -261,7 +254,7 @@ func TestInstitutionDelete_NotFound(t *testing.T) {
 	id := uuid.New()
 	repo.On("FindByID", id).Return(nil, model.ErrNotFound)
 
-	err := uc.Delete(id, uuid.New())
+	err := uc.Delete(id, id)
 
 	assert.ErrorIs(t, err, model.ErrNotFound)
 	repo.AssertExpectations(t)
@@ -271,17 +264,14 @@ func TestInstitutionDelete_Unauthorized(t *testing.T) {
 	repo := &mockInstitutionRepo{}
 	uc := newInstitutionUseCase(repo)
 
-	ownerID := uuid.New()
-	otherUserID := uuid.New()
 	id := uuid.New()
-	existing := &model.Institution{ID: id, UserID: ownerID}
+	otherInstID := uuid.New()
 
-	repo.On("FindByID", id).Return(existing, nil)
-
-	err := uc.Delete(id, otherUserID)
+	// id != otherInstID → ErrUnauthorized without hitting repo
+	err := uc.Delete(id, otherInstID)
 
 	assert.ErrorIs(t, err, model.ErrUnauthorized)
-	repo.AssertExpectations(t)
+	repo.AssertExpectations(t) // no repo calls expected
 }
 
 func TestInstitutionUpdateStatus_Approve(t *testing.T) {

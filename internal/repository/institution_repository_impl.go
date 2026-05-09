@@ -45,12 +45,16 @@ func (r *institutionRepository) FindByCNPJ(cnpj string) (*model.Institution, err
 	return &institution, nil
 }
 
-func (r *institutionRepository) FindByUserID(userID uuid.UUID) ([]*model.Institution, error) {
-	var institutions []*model.Institution
-	if err := r.db.Find(&institutions, "user_id = ?", userID).Error; err != nil {
+func (r *institutionRepository) FindByAuth0ID(auth0ID string) (*model.Institution, error) {
+	var institution model.Institution
+	err := r.db.First(&institution, "auth0_id = ?", auth0ID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, model.ErrNotFound
+		}
 		return nil, err
 	}
-	return institutions, nil
+	return &institution, nil
 }
 
 func (r *institutionRepository) FindAll() ([]*model.Institution, error) {

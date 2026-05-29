@@ -14,7 +14,7 @@ import (
 	"facilitador-de-doacoes/internal/usecase"
 	"github.com/gin-contrib/cors"
 
-	"facilitador-de-doacoes/pkg/abacatepay"
+	"facilitador-de-doacoes/pkg/asaas"
 	"facilitador-de-doacoes/pkg/auth0mgmt"
 	"facilitador-de-doacoes/pkg/database"
 	"facilitador-de-doacoes/pkg/supabase"
@@ -30,11 +30,16 @@ func main() {
 		log.Fatalf("failed to connect to database: %v", err)
 	}
 
+	// NOTE: AutoMigrate adds payment_method and payment_id columns.
+	// If upgrading from the previous schema, run manually:
+	//   ALTER TABLE donations RENAME COLUMN pix_id TO payment_id;
+	//   ALTER TABLE donations ADD COLUMN IF NOT EXISTS payment_method VARCHAR(20) NOT NULL DEFAULT 'PIX';
 	if err := db.AutoMigrate(&model.User{}, &model.Donation{}, &model.Institution{}, &model.Campaign{}, &model.Necessity{}); err != nil {
 		log.Fatalf("failed to run migrations: %v", err)
 	}
 
-	abacateClient := abacatepay.NewClient(os.Getenv("ABACATEPAY_API_KEY"))
+	sandbox := os.Getenv("ASAAS_SANDBOX") == "true"
+	asaasClient := asaas.NewClient(os.Getenv("ASAAS_API_KEY"), sandbox)
 	supabaseClient := supabase.NewClient(os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_KEY"), os.Getenv("SUPABASE_BUCKET_NAME"))
 	mgmtClient := auth0mgmt.NewClient(
 		os.Getenv("AUTH0_DOMAIN"),
@@ -55,8 +60,11 @@ func main() {
 	campaignHandler := handler.NewCampaignHandler(campaignUC)
 
 	donationRepo := repository.NewDonationRepository(db)
-	donationUC := usecase.NewDonationUseCase(donationRepo, userRepo, campaignRepo, abacateClient)
+	donationUC := usecase.NewDonationUseCase(donationRepo, userRepo, campaignRepo, asaasClient)
 	donationHandler := handler.NewDonationHandler(donationUC)
+
+	transferUC := usecase.NewTransferUseCase(asaasClient)
+	transferHandler := handler.NewTransferHandler(transferUC)
 
 	necessityRepo := repository.NewNecessityRepository(db)
 	necessityUC := usecase.NewNecessityUseCase(necessityRepo)
@@ -76,8 +84,12 @@ func main() {
 
 	r := gin.Default()
 
+	allowedOrigins := []string{"http://localhost:5174"}
+	if frontendURL := os.Getenv("FRONTEND_URL"); frontendURL != "" {
+		allowedOrigins = append(allowedOrigins, frontendURL)
+	}
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{os.Getenv("FRONTEND_URL"), "http://localhost:5173"},
+		AllowOrigins:     allowedOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		AllowCredentials: true,
@@ -95,6 +107,8 @@ func main() {
 	)
 	campaignHandler.RegisterRoutes(api, authMiddleware, requireInstitution)
 	necessityHandler.RegisterRoutes(api, authMiddleware, requireInstitution)
+	// Transfers require institution authentication
+	transferHandler.RegisterRoutes(api, authMiddleware, requireInstitution)
 
 	port := os.Getenv("PORT")
 	if port == "" {

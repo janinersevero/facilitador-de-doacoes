@@ -33,9 +33,9 @@ func (r *donationRepository) FindByID(id uuid.UUID) (*model.Donation, error) {
 	return &d, nil
 }
 
-func (r *donationRepository) FindByPixID(pixID string) (*model.Donation, error) {
+func (r *donationRepository) FindByPaymentID(paymentID string) (*model.Donation, error) {
 	var d model.Donation
-	err := r.db.First(&d, "pix_id = ?", pixID).Error
+	err := r.db.First(&d, "payment_id = ?", paymentID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, model.ErrNotFound

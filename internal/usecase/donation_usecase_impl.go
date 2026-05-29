@@ -8,27 +8,21 @@ import (
 
 	"facilitador-de-doacoes/internal/model"
 	"facilitador-de-doacoes/internal/repository"
-	"facilitador-de-doacoes/pkg/abacatepay"
+	"facilitador-de-doacoes/pkg/asaas"
 )
-
-// PixClient abstracts PIX payment operations
-// (implemented by abacatepay.Client) for test purposes ;)
-type PixClient interface {
-	CreatePix(ctx context.Context, req abacatepay.CreatePixRequest) (*abacatepay.PixData, error)
-}
 
 type donationUseCase struct {
 	repo         repository.DonationRepository
 	userRepo     repository.UserRepository
 	campaignRepo repository.CampaignRepository
-	client       PixClient
+	client       asaas.PaymentClient
 }
 
 func NewDonationUseCase(
 	repo repository.DonationRepository,
 	userRepo repository.UserRepository,
 	campaignRepo repository.CampaignRepository,
-	client PixClient,
+	client asaas.PaymentClient,
 ) DonationUseCase {
 	return &donationUseCase{
 		repo:         repo,
@@ -39,12 +33,10 @@ func NewDonationUseCase(
 }
 
 func (uc *donationUseCase) Create(input CreateDonationInput) (*model.Donation, error) {
-	// Exactly one target must be provided
 	if (input.InstitutionID == nil) == (input.CampaignID == nil) {
 		return nil, model.ErrInvalidDonationTarget
 	}
 
-	// If donating to a campaign, validate it exists and is active
 	if input.CampaignID != nil {
 		campaign, err := uc.campaignRepo.FindByID(*input.CampaignID)
 		if err != nil {
@@ -60,23 +52,76 @@ func (uc *donationUseCase) Create(input CreateDonationInput) (*model.Donation, e
 		return nil, fmt.Errorf("user not found: %w", err)
 	}
 
-	pixReq := abacatepay.CreatePixRequest{
-		Amount:      input.Amount,
-		Description: "Doação",
-		ExternalID:  uuid.New().String(),
+	method := input.PaymentMethod
+	if method == "" {
+		method = "PIX"
 	}
+
+	var customer *asaas.CustomerData
 	if user.CPF != "" {
-		pixReq.Customer = &abacatepay.Customer{
-			Name:      user.Name,
-			Email:     user.Email,
-			Cellphone: user.Phone,
-			TaxID:     user.CPF,
+		customer = &asaas.CustomerData{
+			Name:  user.Name,
+			Email: user.Email,
+			Phone: user.Phone,
+			CPF:   user.CPF,
 		}
 	}
 
-	pix, err := uc.client.CreatePix(context.Background(), pixReq)
-	if err != nil {
-		return nil, fmt.Errorf("create pix: %w", err)
+	externalRef := uuid.New().String()
+	var paymentID, brCode, qrCodeURL, status string
+
+	switch method {
+	case "PIX":
+		result, err := uc.client.CreatePixPayment(context.Background(), asaas.PixPaymentRequest{
+			Amount:      input.Amount,
+			Description: "Doação",
+			ExternalRef: externalRef,
+			Customer:    customer,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("create pix: %w", err)
+		}
+		paymentID = result.PaymentID
+		brCode = result.BrCode
+		qrCodeURL = result.QRCodeURL
+		status = result.Status
+
+	case "CREDIT_CARD":
+		if input.CreditCard == nil {
+			return nil, fmt.Errorf("credit_card data required for CREDIT_CARD payment method")
+		}
+		if customer == nil {
+			return nil, fmt.Errorf("user CPF is required for credit card payment")
+		}
+		result, err := uc.client.CreateCreditCardPayment(context.Background(), asaas.CreditCardPaymentRequest{
+			Amount:      input.Amount,
+			Description: "Doação",
+			ExternalRef: externalRef,
+			Customer:    *customer,
+			Card: asaas.CreditCardData{
+				HolderName:    input.CreditCard.HolderName,
+				Number:        input.CreditCard.Number,
+				ExpiryMonth:   input.CreditCard.ExpiryMonth,
+				ExpiryYear:    input.CreditCard.ExpiryYear,
+				CCV:           input.CreditCard.CCV,
+				PostalCode:    input.CreditCard.PostalCode,
+				AddressNumber: input.CreditCard.AddressNumber,
+				Phone:         input.CreditCard.Phone,
+			},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("create credit card payment: %w", err)
+		}
+		paymentID = result.PaymentID
+		status = result.Status
+
+	default:
+		return nil, fmt.Errorf("unsupported payment method: %s", method)
+	}
+
+	donationStatus := "PENDING"
+	if status == "CONFIRMED" || status == "RECEIVED" {
+		donationStatus = "PAID"
 	}
 
 	donation := &model.Donation{
@@ -84,11 +129,12 @@ func (uc *donationUseCase) Create(input CreateDonationInput) (*model.Donation, e
 		UserID:        input.UserID,
 		InstitutionID: input.InstitutionID,
 		CampaignID:    input.CampaignID,
-		PixID:         pix.ID,
-		BrCode:        pix.BrCode,
-		QRCodeURL:     pix.QRCodeURL,
+		PaymentMethod: method,
+		PaymentID:     paymentID,
+		BrCode:        brCode,
+		QRCodeURL:     qrCodeURL,
 		Amount:        input.Amount,
-		Status:        "PENDING",
+		Status:        donationStatus,
 	}
 
 	if err := uc.repo.Create(donation); err != nil {
@@ -106,8 +152,8 @@ func (uc *donationUseCase) GetAll() ([]*model.Donation, error) {
 	return uc.repo.FindAll()
 }
 
-func (uc *donationUseCase) HandleWebhook(pixID, status string) error {
-	donation, err := uc.repo.FindByPixID(pixID)
+func (uc *donationUseCase) HandleWebhook(paymentID, status string) error {
+	donation, err := uc.repo.FindByPaymentID(paymentID)
 	if err != nil {
 		return err
 	}
@@ -116,7 +162,6 @@ func (uc *donationUseCase) HandleWebhook(pixID, status string) error {
 		return err
 	}
 
-	// Atomically increment campaign total when payment is confirmed
 	if status == "PAID" && donation.CampaignID != nil && uc.campaignRepo != nil {
 		if err := uc.campaignRepo.IncrementTotalRaised(*donation.CampaignID, int64(donation.Amount)); err != nil {
 			return fmt.Errorf("increment campaign total: %w", err)

@@ -12,7 +12,7 @@ import (
 
 	"facilitador-de-doacoes/internal/model"
 	"facilitador-de-doacoes/internal/usecase"
-	"facilitador-de-doacoes/pkg/abacatepay"
+	"facilitador-de-doacoes/pkg/asaas"
 )
 
 type DonationHandler struct {
@@ -83,28 +83,42 @@ func (h *DonationHandler) Webhook(c *gin.Context) {
 		return
 	}
 
-	secret := os.Getenv("ABACATEPAY_WEBHOOK_SECRET")
-	if secret != "" {
-		sig := c.GetHeader("X-Webhook-Signature")
-		if !abacatepay.ValidateSignature(secret, sig, body) {
+	token := os.Getenv("ASAAS_WEBHOOK_TOKEN")
+	if token != "" {
+		if !asaas.ValidateWebhookToken(c.GetHeader("asaas-access-token"), token) {
 			c.Status(http.StatusUnauthorized)
 			return
 		}
 	}
 
-	var event abacatepay.WebhookEvent
+	var event asaas.WebhookEvent
 	if err := json.Unmarshal(body, &event); err != nil {
 		c.Status(http.StatusBadRequest)
 		return
 	}
 
-	if event.EventType == "billing.paid" {
-		b := event.Data.Billing
-		if err := h.uc.HandleWebhook(b.ID, b.Status); err != nil {
+	switch event.Event {
+	case "PAYMENT_RECEIVED", "PAYMENT_CONFIRMED":
+		status := mapAsaasStatus(event.Payment.Status)
+		if err := h.uc.HandleWebhook(event.Payment.ID, status); err != nil {
 			c.Status(http.StatusInternalServerError)
 			return
 		}
 	}
 
 	c.Status(http.StatusOK)
+}
+
+// mapAsaasStatus normalizes ASAAS payment statuses to internal statuses.
+func mapAsaasStatus(asaasStatus string) string {
+	switch asaasStatus {
+	case "RECEIVED", "CONFIRMED":
+		return "PAID"
+	case "OVERDUE":
+		return "OVERDUE"
+	case "REFUNDED", "REFUND_REQUESTED":
+		return "REFUNDED"
+	default:
+		return asaasStatus
+	}
 }

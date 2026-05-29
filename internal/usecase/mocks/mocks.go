@@ -8,7 +8,7 @@ import (
 
 	"facilitador-de-doacoes/internal/model"
 	"facilitador-de-doacoes/internal/repository"
-	"facilitador-de-doacoes/pkg/abacatepay"
+	"facilitador-de-doacoes/pkg/asaas"
 )
 
 // ---------- UserRepository ----------
@@ -83,8 +83,8 @@ func (m *MockDonationRepository) FindByID(id uuid.UUID) (*model.Donation, error)
 	return args.Get(0).(*model.Donation), args.Error(1)
 }
 
-func (m *MockDonationRepository) FindByPixID(pixID string) (*model.Donation, error) {
-	args := m.Called(pixID)
+func (m *MockDonationRepository) FindByPaymentID(paymentID string) (*model.Donation, error) {
+	args := m.Called(paymentID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -204,16 +204,38 @@ func (m *MockRoleSetter) SetUserRole(ctx context.Context, auth0UserID, role stri
 	return m.Called(ctx, auth0UserID, role).Error(0)
 }
 
-// ---------- PixClient ----------
+// ---------- PaymentClient ----------
 
-type MockPixClient struct {
+type MockPaymentClient struct {
 	mock.Mock
 }
 
-func (m *MockPixClient) CreatePix(ctx context.Context, req abacatepay.CreatePixRequest) (*abacatepay.PixData, error) {
+func (m *MockPaymentClient) CreatePixPayment(ctx context.Context, req asaas.PixPaymentRequest) (*asaas.PixPaymentResult, error) {
 	args := m.Called(ctx, req)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*abacatepay.PixData), args.Error(1)
+	return args.Get(0).(*asaas.PixPaymentResult), args.Error(1)
+}
+
+func (m *MockPaymentClient) CreateCreditCardPayment(ctx context.Context, req asaas.CreditCardPaymentRequest) (*asaas.CreditCardPaymentResult, error) {
+	args := m.Called(ctx, req)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*asaas.CreditCardPaymentResult), args.Error(1)
+}
+
+// ---------- TransferGateway ----------
+
+type MockTransferGateway struct {
+	mock.Mock
+}
+
+func (m *MockTransferGateway) Transfer(ctx context.Context, req asaas.TransferRequest) (*asaas.TransferResult, error) {
+	args := m.Called(ctx, req)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*asaas.TransferResult), args.Error(1)
 }

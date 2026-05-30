@@ -15,7 +15,7 @@ type CreditCardInput struct {
 	CCV           string `json:"ccv"             binding:"required"`
 	PostalCode    string `json:"postal_code"     binding:"required"`
 	AddressNumber string `json:"address_number"  binding:"required"`
-	Phone         string `json:"phone"` // opcional: usado quando o usuário não tem telefone cadastrado
+	Phone         string `json:"phone"` // optional: used when the user has no phone registered
 }
 
 type CreateDonationInput struct {
@@ -24,7 +24,7 @@ type CreateDonationInput struct {
 	InstitutionID *uuid.UUID       `json:"institution_id"`
 	CampaignID    *uuid.UUID       `json:"campaign_id"`
 	PaymentMethod string           `json:"payment_method"` // "PIX" (default) or "CREDIT_CARD"
-	CreditCard    *CreditCardInput `json:"credit_card"`    // required when PaymentMethod = "CREDIT_CARD"
+	CreditCard    *CreditCardInput `json:"credit_card"`    // required when PaymentMethod is "CREDIT_CARD"
 }
 
 type DonationUseCase interface {

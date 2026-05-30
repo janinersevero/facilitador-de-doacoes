@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"io"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -40,6 +41,7 @@ func (h *InstitutionHandler) RegisterRoutes(r *gin.RouterGroup, authOnly []gin.H
 	instGroup.GET("/me", h.GetMe)
 	instGroup.PUT("/:id", h.Update)
 	instGroup.DELETE("/:id", h.Delete)
+	instGroup.PATCH("/:id/images", h.UploadImage)
 }
 
 func (h *InstitutionHandler) Create(c *gin.Context) {
@@ -180,6 +182,57 @@ func (h *InstitutionHandler) Delete(c *gin.Context) {
 	}
 
 	c.Status(http.StatusNoContent)
+}
+
+func (h *InstitutionHandler) UploadImage(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+
+	institutionID, ok := c.Get(institutionIDKey)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	imageType := c.Query("type")
+	if imageType != "logo" && imageType != "cover" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "type must be 'logo' or 'cover'"})
+		return
+	}
+
+	file, header, err := c.Request.FormFile("image")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "image is required"})
+		return
+	}
+	defer file.Close()
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read image"})
+		return
+	}
+
+	contentType := header.Header.Get("Content-Type")
+
+	institution, err := h.uc.UploadImage(id, institutionID.(uuid.UUID), imageType, data, contentType)
+	if err != nil {
+		if errors.Is(err, model.ErrUnauthorized) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+			return
+		}
+		if errors.Is(err, model.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "institution not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, institution)
 }
 
 func (h *InstitutionHandler) UpdateStatus(c *gin.Context) {

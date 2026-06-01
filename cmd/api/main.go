@@ -3,8 +3,10 @@ package main
 import (
 	"log"
 	"os"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/hibiken/asynq"
 	"github.com/joho/godotenv"
 
 	"facilitador-de-doacoes/internal/handler"
@@ -17,6 +19,7 @@ import (
 	"facilitador-de-doacoes/pkg/asaas"
 	"facilitador-de-doacoes/pkg/auth0mgmt"
 	"facilitador-de-doacoes/pkg/database"
+	"facilitador-de-doacoes/pkg/queue"
 	"facilitador-de-doacoes/pkg/supabase"
 )
 
@@ -47,6 +50,21 @@ func main() {
 		os.Getenv("AUTH0_MGMT_CLIENT_SECRET"),
 	)
 
+	// Queue — optional: if REDIS_URL is not set, notifications are disabled
+	var queueClient *asynq.Client
+	redisURL := os.Getenv("REDIS_URL")
+	if redisURL != "" {
+		redisOpt, err := asynq.ParseRedisURI(redisURL)
+		if err != nil {
+			log.Fatalf("invalid REDIS_URL: %v", err)
+		}
+		queueClient = asynq.NewClient(redisOpt)
+		defer queueClient.Close()
+		log.Println("queue: conectado ao Redis")
+	} else {
+		log.Println("queue: REDIS_URL não configurado, notificações desativadas")
+	}
+
 	userRepo := repository.NewUserRepository(db)
 	userUC := usecase.NewUserUseCase(userRepo, supabaseClient, mgmtClient)
 	userHandler := handler.NewUserHandler(userUC)
@@ -60,7 +78,7 @@ func main() {
 	campaignHandler := handler.NewCampaignHandler(campaignUC)
 
 	donationRepo := repository.NewDonationRepository(db)
-	donationUC := usecase.NewDonationUseCase(donationRepo, userRepo, campaignRepo, asaasClient)
+	donationUC := usecase.NewDonationUseCase(donationRepo, userRepo, campaignRepo, asaasClient, queueClient)
 	donationHandler := handler.NewDonationHandler(donationUC)
 
 	transferUC := usecase.NewTransferUseCase(asaasClient)
@@ -69,6 +87,37 @@ func main() {
 	necessityRepo := repository.NewNecessityRepository(db)
 	necessityUC := usecase.NewNecessityUseCase(necessityRepo)
 	necessityHandler := handler.NewNecessityHandler(necessityUC)
+
+	// Worker — runs in a goroutine alongside the API
+	if queueClient != nil {
+		notifyURL := os.Getenv("CHATBOT_NOTIFY_URL")
+		if notifyURL == "" {
+			notifyURL = "http://localhost:3000/notify" // local fallback
+		}
+
+		notificationHandler := queue.NewNotificationHandler(userRepo, institutionRepo, campaignRepo, notifyURL)
+
+		workerRedisOpt, _ := asynq.ParseRedisURI(redisURL)
+		srv := asynq.NewServer(
+			workerRedisOpt,
+			asynq.Config{
+				Concurrency: 5,
+				RetryDelayFunc: func(n int, _ error, _ *asynq.Task) time.Duration {
+					return 15 * time.Minute
+				},
+			},
+		)
+
+		mux := asynq.NewServeMux()
+		mux.HandleFunc(queue.TypeDonationPaid, notificationHandler.ProcessTask)
+
+		go func() {
+			if err := srv.Run(mux); err != nil {
+				log.Fatalf("worker error: %v", err)
+			}
+		}()
+		log.Println("worker: iniciado")
+	}
 
 	jwtValidator, err := middleware.NewAuth0Validator(
 		os.Getenv("AUTH0_DOMAIN"),
@@ -107,7 +156,6 @@ func main() {
 	)
 	campaignHandler.RegisterRoutes(api, authMiddleware, requireInstitution)
 	necessityHandler.RegisterRoutes(api, authMiddleware, requireInstitution)
-	// Transfers require institution authentication
 	transferHandler.RegisterRoutes(api, authMiddleware, requireInstitution)
 
 	port := os.Getenv("PORT")

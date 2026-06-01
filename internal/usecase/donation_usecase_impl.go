@@ -3,12 +3,15 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"log"
 
 	"github.com/google/uuid"
+	"github.com/hibiken/asynq"
 
 	"facilitador-de-doacoes/internal/model"
 	"facilitador-de-doacoes/internal/repository"
 	"facilitador-de-doacoes/pkg/asaas"
+	"facilitador-de-doacoes/pkg/queue"
 )
 
 type donationUseCase struct {
@@ -16,6 +19,7 @@ type donationUseCase struct {
 	userRepo     repository.UserRepository
 	campaignRepo repository.CampaignRepository
 	client       asaas.PaymentClient
+	queueClient  *asynq.Client // nil disables enqueueing (e.g. in tests)
 }
 
 func NewDonationUseCase(
@@ -23,12 +27,14 @@ func NewDonationUseCase(
 	userRepo repository.UserRepository,
 	campaignRepo repository.CampaignRepository,
 	client asaas.PaymentClient,
+	queueClient *asynq.Client,
 ) DonationUseCase {
 	return &donationUseCase{
 		repo:         repo,
 		userRepo:     userRepo,
 		campaignRepo: campaignRepo,
 		client:       client,
+		queueClient:  queueClient,
 	}
 }
 
@@ -162,11 +168,49 @@ func (uc *donationUseCase) HandleWebhook(paymentID, status string) error {
 		return err
 	}
 
-	if status == "PAID" && donation.CampaignID != nil && uc.campaignRepo != nil {
-		if err := uc.campaignRepo.IncrementTotalRaised(*donation.CampaignID, int64(donation.Amount)); err != nil {
-			return fmt.Errorf("increment campaign total: %w", err)
+	if status == "PAID" {
+		if donation.CampaignID != nil && uc.campaignRepo != nil {
+			if err := uc.campaignRepo.IncrementTotalRaised(*donation.CampaignID, int64(donation.Amount)); err != nil {
+				return fmt.Errorf("increment campaign total: %w", err)
+			}
 		}
+
+		uc.enqueueDonationPaid(donation)
 	}
 
 	return nil
+}
+
+func (uc *donationUseCase) enqueueDonationPaid(donation *model.Donation) {
+	if uc.queueClient == nil {
+		return
+	}
+
+	campaignID := ""
+	institutionID := ""
+
+	if donation.InstitutionID != nil {
+		institutionID = donation.InstitutionID.String()
+	} else if donation.CampaignID != nil {
+		// Donation to a campaign — resolve institution from the campaign
+		campaign, err := uc.campaignRepo.FindByID(*donation.CampaignID)
+		if err != nil {
+			log.Printf("[queue] erro ao buscar campanha donation_id=%s: %v", donation.ID, err)
+			return
+		}
+		campaignID = donation.CampaignID.String()
+		institutionID = campaign.InstitutionID.String()
+	}
+
+	payload := queue.DonationPaidPayload{
+		DonationID:    donation.ID.String(),
+		UserID:        donation.UserID.String(),
+		Amount:        donation.Amount,
+		InstitutionID: institutionID,
+		CampaignID:    campaignID,
+	}
+
+	if err := queue.EnqueueDonationPaid(uc.queueClient, context.Background(), payload); err != nil {
+		log.Printf("[queue] erro ao enfileirar notificação donation_id=%s: %v", donation.ID, err)
+	}
 }

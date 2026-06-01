@@ -41,7 +41,7 @@ func TestCreateDonation_Success_ToInstitution(t *testing.T) {
 
 	donationRepo.On("Create", mock.AnythingOfType("*model.Donation")).Return(nil)
 
-	uc := usecase.NewDonationUseCase(donationRepo, userRepo, campaignRepo, paymentClient)
+	uc := usecase.NewDonationUseCase(donationRepo, userRepo, campaignRepo, paymentClient, nil)
 
 	donation, err := uc.Create(usecase.CreateDonationInput{
 		UserID:        userID,
@@ -74,7 +74,7 @@ func TestCreateDonation_Success_ToCampaign(t *testing.T) {
 	paymentClient.On("CreatePixPayment", mock.Anything, mock.Anything).Return(&asaas.PixPaymentResult{PaymentID: "pay-456"}, nil)
 	donationRepo.On("Create", mock.AnythingOfType("*model.Donation")).Return(nil)
 
-	uc := usecase.NewDonationUseCase(donationRepo, userRepo, campaignRepo, paymentClient)
+	uc := usecase.NewDonationUseCase(donationRepo, userRepo, campaignRepo, paymentClient, nil)
 
 	donation, err := uc.Create(usecase.CreateDonationInput{
 		UserID:     userID,
@@ -89,7 +89,7 @@ func TestCreateDonation_Success_ToCampaign(t *testing.T) {
 }
 
 func TestCreateDonation_InvalidTarget_BothNil(t *testing.T) {
-	uc := usecase.NewDonationUseCase(nil, nil, nil, nil)
+	uc := usecase.NewDonationUseCase(nil, nil, nil, nil, nil)
 
 	_, err := uc.Create(usecase.CreateDonationInput{UserID: uuid.New(), Amount: 1000})
 
@@ -97,7 +97,7 @@ func TestCreateDonation_InvalidTarget_BothNil(t *testing.T) {
 }
 
 func TestCreateDonation_InvalidTarget_BothSet(t *testing.T) {
-	uc := usecase.NewDonationUseCase(nil, nil, nil, nil)
+	uc := usecase.NewDonationUseCase(nil, nil, nil, nil, nil)
 
 	_, err := uc.Create(usecase.CreateDonationInput{
 		UserID:        uuid.New(),
@@ -115,7 +115,7 @@ func TestCreateDonation_CampaignNotActive(t *testing.T) {
 	campaign := &model.Campaign{ID: *cID, Status: model.CampaignStatusCompleted}
 	campaignRepo.On("FindByID", *cID).Return(campaign, nil)
 
-	uc := usecase.NewDonationUseCase(nil, nil, campaignRepo, nil)
+	uc := usecase.NewDonationUseCase(nil, nil, campaignRepo, nil, nil)
 
 	_, err := uc.Create(usecase.CreateDonationInput{UserID: uuid.New(), Amount: 500, CampaignID: cID})
 
@@ -139,7 +139,7 @@ func TestCreateDonation_WithoutCPF(t *testing.T) {
 
 	donationRepo.On("Create", mock.AnythingOfType("*model.Donation")).Return(nil)
 
-	uc := usecase.NewDonationUseCase(donationRepo, userRepo, campaignRepo, paymentClient)
+	uc := usecase.NewDonationUseCase(donationRepo, userRepo, campaignRepo, paymentClient, nil)
 
 	donation, err := uc.Create(usecase.CreateDonationInput{UserID: userID, Amount: 500, InstitutionID: iID})
 
@@ -153,7 +153,7 @@ func TestCreateDonation_UserNotFound(t *testing.T) {
 	userID := uuid.New()
 	userRepo.On("FindByID", userID).Return(nil, model.ErrNotFound)
 
-	uc := usecase.NewDonationUseCase(nil, userRepo, nil, nil)
+	uc := usecase.NewDonationUseCase(nil, userRepo, nil, nil, nil)
 
 	_, err := uc.Create(usecase.CreateDonationInput{UserID: userID, Amount: 1000, InstitutionID: iID})
 
@@ -170,7 +170,7 @@ func TestCreateDonation_PixClientError(t *testing.T) {
 	userRepo.On("FindByID", userID).Return(&model.User{ID: userID}, nil)
 	paymentClient.On("CreatePixPayment", mock.Anything, mock.Anything).Return(nil, errors.New("payment gateway down"))
 
-	uc := usecase.NewDonationUseCase(donationRepo, userRepo, nil, paymentClient)
+	uc := usecase.NewDonationUseCase(donationRepo, userRepo, nil, paymentClient, nil)
 
 	_, err := uc.Create(usecase.CreateDonationInput{UserID: userID, Amount: 1000, InstitutionID: iID})
 
@@ -188,7 +188,7 @@ func TestCreateDonation_RepoCreateError(t *testing.T) {
 	paymentClient.On("CreatePixPayment", mock.Anything, mock.Anything).Return(&asaas.PixPaymentResult{PaymentID: "pay-x"}, nil)
 	donationRepo.On("Create", mock.Anything).Return(errors.New("db write error"))
 
-	uc := usecase.NewDonationUseCase(donationRepo, userRepo, nil, paymentClient)
+	uc := usecase.NewDonationUseCase(donationRepo, userRepo, nil, paymentClient, nil)
 
 	_, err := uc.Create(usecase.CreateDonationInput{UserID: userID, Amount: 1000, InstitutionID: iID})
 
@@ -213,7 +213,7 @@ func TestCreateDonation_CreditCard_Success(t *testing.T) {
 
 	donationRepo.On("Create", mock.AnythingOfType("*model.Donation")).Return(nil)
 
-	uc := usecase.NewDonationUseCase(donationRepo, userRepo, nil, paymentClient)
+	uc := usecase.NewDonationUseCase(donationRepo, userRepo, nil, paymentClient, nil)
 
 	donation, err := uc.Create(usecase.CreateDonationInput{
 		UserID:        userID,
@@ -244,7 +244,7 @@ func TestCreateDonation_CreditCard_MissingCardData(t *testing.T) {
 	user := &model.User{ID: userID, CPF: "12345678900"}
 	userRepo.On("FindByID", userID).Return(user, nil)
 
-	uc := usecase.NewDonationUseCase(nil, userRepo, nil, new(mocks.MockPaymentClient))
+	uc := usecase.NewDonationUseCase(nil, userRepo, nil, new(mocks.MockPaymentClient), nil)
 
 	_, err := uc.Create(usecase.CreateDonationInput{
 		UserID:        userID,
@@ -265,7 +265,7 @@ func TestCreateDonation_CreditCard_MissingCPF(t *testing.T) {
 	user := &model.User{ID: userID, Name: "No CPF"} // no CPF
 	userRepo.On("FindByID", userID).Return(user, nil)
 
-	uc := usecase.NewDonationUseCase(nil, userRepo, nil, new(mocks.MockPaymentClient))
+	uc := usecase.NewDonationUseCase(nil, userRepo, nil, new(mocks.MockPaymentClient), nil)
 
 	_, err := uc.Create(usecase.CreateDonationInput{
 		UserID:        userID,
@@ -286,7 +286,7 @@ func TestCreateDonation_UnsupportedPaymentMethod(t *testing.T) {
 	user := &model.User{ID: userID}
 	userRepo.On("FindByID", userID).Return(user, nil)
 
-	uc := usecase.NewDonationUseCase(nil, userRepo, nil, new(mocks.MockPaymentClient))
+	uc := usecase.NewDonationUseCase(nil, userRepo, nil, new(mocks.MockPaymentClient), nil)
 
 	_, err := uc.Create(usecase.CreateDonationInput{
 		UserID:        userID,
@@ -307,7 +307,7 @@ func TestGetDonationByID_Success(t *testing.T) {
 	expected := &model.Donation{ID: id, Amount: 500}
 	donationRepo.On("FindByID", id).Return(expected, nil)
 
-	uc := usecase.NewDonationUseCase(donationRepo, nil, nil, nil)
+	uc := usecase.NewDonationUseCase(donationRepo, nil, nil, nil, nil)
 
 	donation, err := uc.GetByID(id)
 	assert.NoError(t, err)
@@ -319,7 +319,7 @@ func TestGetDonationByID_NotFound(t *testing.T) {
 	id := uuid.New()
 	donationRepo.On("FindByID", id).Return(nil, model.ErrNotFound)
 
-	uc := usecase.NewDonationUseCase(donationRepo, nil, nil, nil)
+	uc := usecase.NewDonationUseCase(donationRepo, nil, nil, nil, nil)
 
 	_, err := uc.GetByID(id)
 	assert.ErrorIs(t, err, model.ErrNotFound)
@@ -332,7 +332,7 @@ func TestGetAllDonations_Success(t *testing.T) {
 	donations := []*model.Donation{{Amount: 100}, {Amount: 200}}
 	donationRepo.On("FindAll").Return(donations, nil)
 
-	uc := usecase.NewDonationUseCase(donationRepo, nil, nil, nil)
+	uc := usecase.NewDonationUseCase(donationRepo, nil, nil, nil, nil)
 
 	result, err := uc.GetAll()
 	assert.NoError(t, err)
@@ -347,7 +347,7 @@ func TestHandleWebhook_Success_NoCampaign(t *testing.T) {
 	donationRepo.On("FindByPaymentID", "pay-abc").Return(&model.Donation{ID: id, PaymentID: "pay-abc"}, nil)
 	donationRepo.On("UpdateStatus", id, "PAID").Return(nil)
 
-	uc := usecase.NewDonationUseCase(donationRepo, nil, nil, nil)
+	uc := usecase.NewDonationUseCase(donationRepo, nil, nil, nil, nil)
 
 	err := uc.HandleWebhook("pay-abc", "PAID")
 	assert.NoError(t, err)
@@ -366,7 +366,7 @@ func TestHandleWebhook_Success_WithCampaign(t *testing.T) {
 	donationRepo.On("UpdateStatus", id, "PAID").Return(nil)
 	campaignRepo.On("IncrementTotalRaised", cID, int64(1000)).Return(nil)
 
-	uc := usecase.NewDonationUseCase(donationRepo, nil, campaignRepo, nil)
+	uc := usecase.NewDonationUseCase(donationRepo, nil, campaignRepo, nil, nil)
 
 	err := uc.HandleWebhook("pay-camp", "PAID")
 	assert.NoError(t, err)
@@ -385,7 +385,7 @@ func TestHandleWebhook_NoCampaignIncrement_WhenNotPaid(t *testing.T) {
 	donationRepo.On("FindByPaymentID", "pay-x").Return(donation, nil)
 	donationRepo.On("UpdateStatus", id, "OVERDUE").Return(nil)
 
-	uc := usecase.NewDonationUseCase(donationRepo, nil, campaignRepo, nil)
+	uc := usecase.NewDonationUseCase(donationRepo, nil, campaignRepo, nil, nil)
 
 	err := uc.HandleWebhook("pay-x", "OVERDUE")
 	assert.NoError(t, err)
@@ -396,7 +396,7 @@ func TestHandleWebhook_DonationNotFound(t *testing.T) {
 	donationRepo := new(mocks.MockDonationRepository)
 	donationRepo.On("FindByPaymentID", "pay-unknown").Return(nil, model.ErrNotFound)
 
-	uc := usecase.NewDonationUseCase(donationRepo, nil, nil, nil)
+	uc := usecase.NewDonationUseCase(donationRepo, nil, nil, nil, nil)
 
 	err := uc.HandleWebhook("pay-unknown", "PAID")
 	assert.ErrorIs(t, err, model.ErrNotFound)
@@ -408,7 +408,7 @@ func TestHandleWebhook_UpdateStatusError(t *testing.T) {
 	donationRepo.On("FindByPaymentID", "pay-abc").Return(&model.Donation{ID: id}, nil)
 	donationRepo.On("UpdateStatus", id, "PAID").Return(errors.New("update failed"))
 
-	uc := usecase.NewDonationUseCase(donationRepo, nil, nil, nil)
+	uc := usecase.NewDonationUseCase(donationRepo, nil, nil, nil, nil)
 
 	err := uc.HandleWebhook("pay-abc", "PAID")
 	assert.EqualError(t, err, "update failed")

@@ -103,6 +103,14 @@ func (m *MockDonationRepository) UpdateStatus(id uuid.UUID, status string) error
 	return m.Called(id, status).Error(0)
 }
 
+func (m *MockDonationRepository) GetRanking(limit int) ([]*model.RankingEntry, error) {
+	args := m.Called(limit)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*model.RankingEntry), args.Error(1)
+}
+
 // ---------- CampaignRepository ----------
 
 type MockCampaignRepository struct {

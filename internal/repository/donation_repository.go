@@ -12,4 +12,5 @@ type DonationRepository interface {
 	FindByPaymentID(paymentID string) (*model.Donation, error)
 	FindAll() ([]*model.Donation, error)
 	UpdateStatus(id uuid.UUID, status string) error
+	GetRanking(limit int) ([]*model.RankingEntry, error)
 }

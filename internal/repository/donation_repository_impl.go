@@ -65,17 +65,16 @@ func (r *donationRepository) GetRanking(limit int) ([]*model.RankingEntry, error
 
 	err := r.db.Raw(`
 		SELECT
-			u.id        AS user_id,
-			u.name      AS user_name,
+			u.id         AS user_id,
+			u.name       AS user_name,
 			u.avatar_url AS avatar_url,
-			SUM(d.amount) / 100 AS points,
-			SUM(d.amount)       AS total_donated,
-			COUNT(d.id)         AS donation_count
+			SUM(d.amount) AS total_donated,
+			COUNT(d.id)   AS donation_count
 		FROM donations d
 		JOIN users u ON u.id = d.user_id
 		WHERE d.status = 'PAID'
-		GROUP BY u.id, u.name, u.avatar_url
-		ORDER BY points DESC
+		GROUP BY u.id
+		ORDER BY total_donated DESC, u.name ASC
 		LIMIT ?
 	`, limit).Scan(&entries).Error
 

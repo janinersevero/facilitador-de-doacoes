@@ -7,7 +7,6 @@ type RankingEntry struct {
 	UserID        uuid.UUID `json:"user_id"`
 	UserName      string    `json:"user_name"`
 	AvatarURL     string    `json:"avatar_url"`
-	Points        int64     `json:"points"`
 	TotalDonated  int64     `json:"total_donated"`
 	DonationCount int       `json:"donation_count"`
 }

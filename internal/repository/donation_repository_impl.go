@@ -59,3 +59,32 @@ func (r *donationRepository) UpdateStatus(id uuid.UUID, status string) error {
 		Update("status", status).
 		Error
 }
+
+func (r *donationRepository) GetRanking(limit int) ([]*model.RankingEntry, error) {
+	var entries []*model.RankingEntry
+
+	err := r.db.Raw(`
+		SELECT
+			u.id         AS user_id,
+			u.name       AS user_name,
+			u.avatar_url AS avatar_url,
+			SUM(d.amount) AS total_donated,
+			COUNT(d.id)   AS donation_count
+		FROM donations d
+		JOIN users u ON u.id = d.user_id
+		WHERE d.status = 'PAID'
+		GROUP BY u.id
+		ORDER BY total_donated DESC, u.name ASC
+		LIMIT ?
+	`, limit).Scan(&entries).Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range entries {
+		entries[i].Position = i + 1
+	}
+
+	return entries, nil
+}

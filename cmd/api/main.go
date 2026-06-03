@@ -81,6 +81,9 @@ func main() {
 	donationUC := usecase.NewDonationUseCase(donationRepo, userRepo, campaignRepo, asaasClient, queueClient)
 	donationHandler := handler.NewDonationHandler(donationUC)
 
+	rankingUC := usecase.NewRankingUseCase(donationRepo)
+	rankingHandler := handler.NewRankingHandler(rankingUC)
+
 	transferUC := usecase.NewTransferUseCase(asaasClient)
 	transferHandler := handler.NewTransferHandler(transferUC)
 
@@ -150,6 +153,7 @@ func main() {
 		[]gin.HandlerFunc{authMiddleware, requireUser},
 	)
 	donationHandler.RegisterRoutes(api)
+	rankingHandler.RegisterRoutes(api)
 	institutionHandler.RegisterRoutes(api,
 		[]gin.HandlerFunc{authMiddleware},
 		[]gin.HandlerFunc{authMiddleware, requireInstitution},

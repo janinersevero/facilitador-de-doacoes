@@ -4,7 +4,7 @@
 
 Plataforma para conectar doadores a instituições e campanhas sociais. Permite realizar doações via PIX ou cartão de crédito, acompanhar campanhas em andamento, e gerenciar as necessidades de cada instituição.
 
-> Este repositório contém apenas o backend (API). O frontend está disponível em: [link do repositório do frontend](https://github.com/jufazenda/facilitador-doacoes-front)
+> Este repositório contém apenas o backend (API). O frontend está disponível em: [facilitador-doacoes-front](https://github.com/jufazenda/facilitador-doacoes-front)
 
 ---
 

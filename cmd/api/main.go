@@ -14,6 +14,7 @@ import (
 	"facilitador-de-doacoes/internal/model"
 	"facilitador-de-doacoes/internal/repository"
 	"facilitador-de-doacoes/internal/usecase"
+
 	"github.com/gin-contrib/cors"
 
 	"facilitador-de-doacoes/pkg/asaas"
@@ -70,7 +71,7 @@ func main() {
 	userHandler := handler.NewUserHandler(userUC)
 
 	institutionRepo := repository.NewInstitutionRepository(db)
-	institutionUC := usecase.NewInstitutionUseCase(institutionRepo, mgmtClient)
+	institutionUC := usecase.NewInstitutionUseCase(institutionRepo, mgmtClient, supabaseClient)
 	institutionHandler := handler.NewInstitutionHandler(institutionUC)
 
 	campaignRepo := repository.NewCampaignRepository(db)

@@ -1,10 +1,16 @@
 package usecase
 
 import (
+	"context"
+
 	"github.com/google/uuid"
 
 	"facilitador-de-doacoes/internal/model"
 )
+
+type SupabaseClient interface {
+	UploadFile(ctx context.Context, fileName string, data []byte, contentType string) (string, error)
+}
 
 type CreateInstitutionInput struct {
 	Name          string `json:"name"           binding:"required"`
@@ -18,7 +24,6 @@ type CreateInstitutionInput struct {
 	Category      string `json:"category"`
 	LogoURL       string `json:"logo_url"`
 	CoverImageURL string `json:"cover_image_url"`
-	VideoURL      string `json:"video_url"`
 	WebsiteURL    string `json:"website_url"`
 }
 
@@ -33,7 +38,6 @@ type UpdateInstitutionInput struct {
 	Category      string `json:"category"`
 	LogoURL       string `json:"logo_url"`
 	CoverImageURL string `json:"cover_image_url"`
-	VideoURL      string `json:"video_url"`
 	WebsiteURL    string `json:"website_url"`
 }
 
@@ -50,4 +54,5 @@ type InstitutionUseCase interface {
 	Update(id uuid.UUID, institutionID uuid.UUID, input UpdateInstitutionInput) (*model.Institution, error)
 	Delete(id uuid.UUID, institutionID uuid.UUID) error
 	UpdateStatus(id uuid.UUID, input UpdateInstitutionStatusInput) (*model.Institution, error)
+	UploadImage(id uuid.UUID, institutionID uuid.UUID, imageType string, data []byte, contentType string) (*model.Institution, error)
 }

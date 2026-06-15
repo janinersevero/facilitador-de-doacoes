@@ -29,7 +29,6 @@ type Institution struct {
 	Category        string            `                                   json:"category,omitempty"`
 	LogoURL         string            `                                   json:"logo_url,omitempty"`
 	CoverImageURL   string            `                                   json:"cover_image_url,omitempty"`
-	VideoURL        string            `                                   json:"video_url,omitempty"`
 	WebsiteURL      string            `                                   json:"website_url,omitempty"`
 	Status          InstitutionStatus `gorm:"default:'pending'"           json:"status"`
 	RejectionReason string            `                                   json:"rejection_reason,omitempty"`

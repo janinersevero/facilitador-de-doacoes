@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"time"
 
@@ -15,10 +16,11 @@ import (
 type institutionUseCase struct {
 	repo       repository.InstitutionRepository
 	roleSetter RoleSetter
+	supabaseClient SupabaseClient
 }
 
-func NewInstitutionUseCase(repo repository.InstitutionRepository, roleSetter RoleSetter) InstitutionUseCase {
-	return &institutionUseCase{repo: repo, roleSetter: roleSetter}
+func NewInstitutionUseCase(repo repository.InstitutionRepository, roleSetter RoleSetter, supabaseClient SupabaseClient) InstitutionUseCase {
+	return &institutionUseCase{repo: repo, roleSetter: roleSetter, supabaseClient: supabaseClient}
 }
 
 func (uc *institutionUseCase) Create(auth0ID string, input CreateInstitutionInput) (*model.Institution, error) {
@@ -51,7 +53,6 @@ func (uc *institutionUseCase) Create(auth0ID string, input CreateInstitutionInpu
 		Category:      input.Category,
 		LogoURL:       input.LogoURL,
 		CoverImageURL: input.CoverImageURL,
-		VideoURL:      input.VideoURL,
 		WebsiteURL:    input.WebsiteURL,
 		Status:        model.InstitutionStatusPending,
 	}
@@ -119,9 +120,6 @@ func (uc *institutionUseCase) Update(id uuid.UUID, institutionID uuid.UUID, inpu
 	if input.CoverImageURL != "" {
 		institution.CoverImageURL = input.CoverImageURL
 	}
-	if input.VideoURL != "" {
-		institution.VideoURL = input.VideoURL
-	}
 	if input.WebsiteURL != "" {
 		institution.WebsiteURL = input.WebsiteURL
 	}
@@ -166,5 +164,36 @@ func (uc *institutionUseCase) UpdateStatus(id uuid.UUID, input UpdateInstitution
 	if err := uc.repo.Update(institution); err != nil {
 		return nil, err
 	}
+	return institution, nil
+}
+
+func(uc *institutionUseCase) UploadImage(id uuid.UUID, institutionID uuid.UUID, imageType string, data []byte, contentType string) (*model.Institution, error) {
+	if id != institutionID {
+		return nil, model.ErrUnauthorized
+	}
+
+	institution, err := uc.repo.FindByID(id)
+	if err != nil {
+		return nil, err
+	}
+
+	fileName := fmt.Sprintf("instituitons/%s/%s", id.String(), imageType)
+	url, err := uc.supabaseClient.UploadFile(context.Background(), fileName, data, contentType)
+	if err != nil {
+		return nil, err
+	}
+
+	if imageType == "logo"{
+		institution.LogoURL = url
+	} else if imageType == "cover"{
+		institution.CoverImageURL = url
+	} else {
+		return nil, fmt.Errorf("Invalid image type: %s", imageType)
+	}
+
+	if err := uc.repo.Update(institution); err != nil {
+		return nil, err
+	}
+
 	return institution, nil
 }

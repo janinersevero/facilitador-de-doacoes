@@ -13,6 +13,13 @@ import (
 	"facilitador-de-doacoes/internal/usecase"
 )
 
+type mockSupabaseClient struct{ mock.Mock }
+
+func (m *mockSupabaseClient) UploadFile(ctx context.Context, fileName string, data []byte, contentType string) (string, error) {
+	args := m.Called(ctx, fileName, data, contentType)
+	return args.String(0), args.Error(1)
+}
+
 type mockRoleSetter struct{ mock.Mock }
 
 func (m *mockRoleSetter) SetUserRole(ctx context.Context, auth0UserID, role string) error {
@@ -68,13 +75,13 @@ func (m *mockInstitutionRepo) Delete(id uuid.UUID) error {
 }
 
 func newInstitutionUseCase(repo *mockInstitutionRepo) usecase.InstitutionUseCase {
-	return usecase.NewInstitutionUseCase(repo, nil)
+	return usecase.NewInstitutionUseCase(repo, nil, nil)
 }
 
 func TestInstitutionCreate_Success(t *testing.T) {
 	repo := &mockInstitutionRepo{}
 	roleSetter := new(mockRoleSetter)
-	uc := usecase.NewInstitutionUseCase(repo, roleSetter)
+	uc := usecase.NewInstitutionUseCase(repo, roleSetter, nil)
 
 	auth0ID := "auth0|abc123"
 	input := usecase.CreateInstitutionInput{
@@ -324,5 +331,82 @@ func TestInstitutionUpdateStatus_Reject(t *testing.T) {
 	assert.Equal(t, model.InstitutionStatusRejected, institution.Status)
 	assert.Equal(t, "documentação inválida", institution.RejectionReason)
 	assert.Nil(t, institution.ApprovedAt)
+	repo.AssertExpectations(t)
+}
+
+func TestInstitutionUploadImage_Logo_Success(t *testing.T) {
+	repo := &mockInstitutionRepo{}
+	supabase := &mockSupabaseClient{}
+	id := uuid.New()
+	uc := usecase.NewInstitutionUseCase(repo, nil, supabase)
+
+	existing := &model.Institution{ID: id, Name: "ONG A"}
+	data := []byte("fake-image")
+	contentType := "image/png"
+	expectedURL := "https://cdn.example.com/logo.png"
+
+	repo.On("FindByID", id).Return(existing, nil)
+	supabase.On("UploadFile", mock.Anything, mock.AnythingOfType("string"), data, contentType).Return(expectedURL, nil)
+	repo.On("Update", mock.MatchedBy(func(i *model.Institution) bool {
+		return i.LogoURL == expectedURL
+	})).Return(nil)
+
+	institution, err := uc.UploadImage(id, id, "logo", data, contentType)
+
+	assert.NoError(t, err)
+	assert.Equal(t, expectedURL, institution.LogoURL)
+	repo.AssertExpectations(t)
+	supabase.AssertExpectations(t)
+}
+
+func TestInstitutionUploadImage_Cover_Success(t *testing.T) {
+	repo := &mockInstitutionRepo{}
+	supabase := &mockSupabaseClient{}
+	id := uuid.New()
+	uc := usecase.NewInstitutionUseCase(repo, nil, supabase)
+
+	existing := &model.Institution{ID: id, Name: "ONG A"}
+	data := []byte("fake-image")
+	contentType := "image/jpeg"
+	expectedURL := "https://cdn.example.com/cover.jpg"
+
+	repo.On("FindByID", id).Return(existing, nil)
+	supabase.On("UploadFile", mock.Anything, mock.AnythingOfType("string"), data, contentType).Return(expectedURL, nil)
+	repo.On("Update", mock.MatchedBy(func(i *model.Institution) bool {
+		return i.CoverImageURL == expectedURL
+	})).Return(nil)
+
+	institution, err := uc.UploadImage(id, id, "cover", data, contentType)
+
+	assert.NoError(t, err)
+	assert.Equal(t, expectedURL, institution.CoverImageURL)
+	repo.AssertExpectations(t)
+	supabase.AssertExpectations(t)
+}
+
+func TestInstitutionUploadImage_Unauthorized(t *testing.T) {
+	repo := &mockInstitutionRepo{}
+	uc := usecase.NewInstitutionUseCase(repo, nil, nil)
+
+	id := uuid.New()
+	otherID := uuid.New()
+
+	_, err := uc.UploadImage(id, otherID, "logo", []byte{}, "image/png")
+
+	assert.ErrorIs(t, err, model.ErrUnauthorized)
+	repo.AssertExpectations(t)
+}
+
+func TestInstitutionUploadImage_NotFound(t *testing.T) {
+	repo := &mockInstitutionRepo{}
+	supabase := &mockSupabaseClient{}
+	id := uuid.New()
+	uc := usecase.NewInstitutionUseCase(repo, nil, supabase)
+
+	repo.On("FindByID", id).Return(nil, model.ErrNotFound)
+
+	_, err := uc.UploadImage(id, id, "logo", []byte{}, "image/png")
+
+	assert.ErrorIs(t, err, model.ErrNotFound)
 	repo.AssertExpectations(t)
 }

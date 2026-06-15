@@ -1,6 +1,6 @@
 # Facilitador de Doações
+<img width="2814" height="1466" alt="Facilitador de Doações - Arquitetura - Page 1 (1)" src="https://github.com/user-attachments/assets/f0e5bb50-ac61-4ce5-b7a1-1baf5060f2e2" />
 
-<img width="1580" height="861" alt="Facilitador de Doações - Arquitetura (2)" src="https://github.com/user-attachments/assets/973f67cc-70c2-473e-83be-6b12cafdf5cf" />
 
 Plataforma para conectar doadores a instituições e campanhas sociais. Permite realizar doações via PIX ou cartão de crédito, acompanhar campanhas em andamento, e gerenciar as necessidades de cada instituição.
 

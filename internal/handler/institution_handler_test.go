@@ -3,6 +3,7 @@ package handler_test
 import (
 	"bytes"
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -71,6 +72,14 @@ func (m *mockInstitutionUseCase) Delete(id uuid.UUID, institutionID uuid.UUID) e
 
 func (m *mockInstitutionUseCase) UpdateStatus(id uuid.UUID, input usecase.UpdateInstitutionStatusInput) (*model.Institution, error) {
 	args := m.Called(id, input)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*model.Institution), args.Error(1)
+}
+
+func (m *mockInstitutionUseCase) UploadImage(id uuid.UUID, institutionID uuid.UUID, imageType string, data []byte, contentType string) (*model.Institution, error) {
+	args := m.Called(id, institutionID, imageType, data, contentType)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -400,5 +409,72 @@ func TestHandlerUpdateStatus_NotFound(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
+	uc.AssertExpectations(t)
+}
+
+func newMultipartRequest(t *testing.T, method, url string, fileContent []byte) (*http.Request, string) {
+	t.Helper()
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, err := writer.CreateFormFile("image", "test.png")
+	assert.NoError(t, err)
+	_, err = part.Write(fileContent)
+	assert.NoError(t, err)
+	writer.Close()
+	req := httptest.NewRequest(method, url, body)
+	return req, writer.FormDataContentType()
+}
+
+func TestHandlerUploadImage_Logo_Success(t *testing.T) {
+	uc := &mockInstitutionUseCase{}
+	instID := uuid.New()
+	r := setupRouter(uc, "auth0|x", instID)
+
+	imgData := []byte("fake-png-data")
+	expected := &model.Institution{ID: instID, LogoURL: "https://cdn.example.com/logo.png"}
+
+	uc.On("UploadImage", instID, instID, "logo", mock.AnythingOfType("[]uint8"), mock.AnythingOfType("string")).
+		Return(expected, nil)
+
+	req, ct := newMultipartRequest(t, http.MethodPatch, "/api/v1/institutions/"+instID.String()+"/images?type=logo", imgData)
+	req.Header.Set("Content-Type", ct)
+	w := httptest.NewRecorder()
+
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	uc.AssertExpectations(t)
+}
+
+func TestHandlerUploadImage_InvalidType(t *testing.T) {
+	uc := &mockInstitutionUseCase{}
+	instID := uuid.New()
+	r := setupRouter(uc, "auth0|x", instID)
+
+	req, ct := newMultipartRequest(t, http.MethodPatch, "/api/v1/institutions/"+instID.String()+"/images?type=banner", []byte("data"))
+	req.Header.Set("Content-Type", ct)
+	w := httptest.NewRecorder()
+
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestHandlerUploadImage_Forbidden(t *testing.T) {
+	uc := &mockInstitutionUseCase{}
+	instID := uuid.New()
+	otherInstID := uuid.New()
+	r := setupRouter(uc, "auth0|x", instID)
+
+	uc.On("UploadImage", otherInstID, instID, "logo", mock.AnythingOfType("[]uint8"), mock.AnythingOfType("string")).
+		Return(nil, model.ErrUnauthorized)
+
+	req, ct := newMultipartRequest(t, http.MethodPatch, "/api/v1/institutions/"+otherInstID.String()+"/images?type=logo", []byte("data"))
+	req.Header.Set("Content-Type", ct)
+	w := httptest.NewRecorder()
+
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
 	uc.AssertExpectations(t)
 }
